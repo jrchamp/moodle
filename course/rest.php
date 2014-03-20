@@ -182,6 +182,15 @@ switch($requestmethod) {
                             $module->name = $cm->name;
                         }
 
+                        // Attempt to update the calendar event if relevant.
+                        $event = new stdClass();
+                        $event->id = $DB->get_field('event', 'id', array('modulename' => $cm->modname, 'instance' => $cm->instance));
+                        $event->name = $module->name;
+                        if ($event->id) {
+                            $calendarevent = calendar_event::load($event->id);
+                            $calendarevent->update($event);
+                        }
+
                         // Attempt to update the grade item if relevant
                         $grademodule = $DB->get_record($cm->modname, array('id' => $cm->instance));
                         $grademodule->cmidnumber = $cm->idnumber;
