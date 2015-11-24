@@ -81,7 +81,6 @@ class tablelog extends \table_sql implements \renderable {
      *                          grader : limit to specific graders (default: all)
      *                          datefrom : start of date range
      *                          datetill : end of date range
-     *                          revisedonly : only show revised grades (default: false)
      *                          format : page | csv | excel (default: page)
      * @param string $download Represents download format, pass '' no download at this time.
      * @param int $page The current page being displayed.
@@ -160,7 +159,6 @@ class tablelog extends \table_sql implements \renderable {
         // Add remaining headers.
         $cols = array_merge($cols, array(
             'itemname' => get_string('gradeitem', 'grades'),
-            'prevgrade' => get_string('gradeold', 'gradereport_history'),
             'finalgrade' => get_string('gradenew', 'gradereport_history'),
             'grader' => get_string('grader', 'gradereport_history'),
             'source' => get_string('source', 'gradereport_history'),
@@ -190,23 +188,6 @@ class tablelog extends \table_sql implements \renderable {
         }
 
         return format_float($history->finalgrade, $decimalpoints);
-    }
-
-    /**
-     * Method to display the previous grade.
-     *
-     * @param \stdClass $history an entry of history record.
-     *
-     * @return string HTML to display
-     */
-    public function col_prevgrade(\stdClass $history) {
-        if (!empty($this->gradeitems[$history->itemid])) {
-            $decimalpoints = $this->gradeitems[$history->itemid]->get_decimals();
-        } else {
-            $decimalpoints = $this->defaultdecimalpoints;
-        }
-
-        return format_float($history->prevgrade, $decimalpoints);
     }
 
     /**
@@ -383,29 +364,11 @@ class tablelog extends \table_sql implements \renderable {
         $fields .= get_all_user_name_fields(true, 'ug', '', 'grader');
         $groupby .= get_all_user_name_fields(true, 'ug');
 
-        // Filtering on revised grades only.
-        $revisedonly = !empty($this->filters->revisedonly);
-
-        if ($count && !$revisedonly) {
+        if ($count) {
             // We can only directly use count when not using the filter revised only.
             $select = "COUNT(1)";
         } else {
-            // Fetching the previous grade. We use MAX() to ensure that we only get one result if
-            // more than one histories happened at the same second.
-            $prevgrade = "SELECT MAX(finalgrade)
-                            FROM {grade_grades_history} h
-                           WHERE h.itemid = ggh.itemid
-                             AND h.userid = ggh.userid
-                             AND h.timemodified < ggh.timemodified
-                             AND NOT EXISTS (
-                              SELECT 1
-                                FROM {grade_grades_history} h2
-                               WHERE h2.itemid = ggh.itemid
-                                 AND h2.userid = ggh.userid
-                                 AND h2.timemodified < ggh.timemodified
-                                 AND h.timemodified < h2.timemodified)";
-
-            $select = "$fields, ($prevgrade) AS prevgrade,
+            $select = "$fields,
                       CASE WHEN gi.itemname IS NULL THEN gi.itemtype ELSE gi.itemname END AS itemname";
         }
 
@@ -417,16 +380,6 @@ class tablelog extends \table_sql implements \renderable {
                    JOIN {user} u ON u.id = ggh.userid
               LEFT JOIN {user} ug ON ug.id = ggh.usermodified
                   WHERE $where";
-
-        // As prevgrade is a dynamic field, we need to wrap the query. This is the only filtering
-        // that should be defined outside the method self::get_filters_sql_and_params().
-        if ($revisedonly) {
-            $allorcount = $count ? 'COUNT(1)' : '*';
-            $sql = "SELECT $allorcount FROM ($sql) pg
-                     WHERE pg.finalgrade != pg.prevgrade
-                        OR (pg.prevgrade IS NULL AND pg.finalgrade IS NOT NULL)
-                        OR (pg.prevgrade IS NOT NULL AND pg.finalgrade IS NULL)";
-        }
 
         // Add order by if needed.
         if (!$count && $sqlsort = $this->get_sql_sort()) {

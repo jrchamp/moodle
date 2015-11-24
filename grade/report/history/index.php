@@ -71,7 +71,6 @@ if ($data = $mform->get_data()) {
         'grader' => optional_param('grader', 0, PARAM_INT),
         'datefrom' => optional_param('datefrom', 0, PARAM_INT),
         'datetill' => optional_param('datetill', 0, PARAM_INT),
-        'revisedonly' => optional_param('revisedonly', 0, PARAM_INT),
     );
 }
 

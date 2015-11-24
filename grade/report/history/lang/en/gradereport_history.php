@@ -37,7 +37,6 @@ $string['foundoneuser'] = '1 user found';
 $string['foundnusers'] = '{$a} users found';
 $string['feedbacktext'] = 'Feedback text';
 $string['finishselectingusers'] = 'Finish selecting users';
-$string['gradenew'] = 'Revised grade';
 $string['gradeold'] = 'Original grade';
 $string['grader'] = 'Grader';
 $string['history:view'] = 'View the grade history';
@@ -46,10 +45,6 @@ $string['historyperpage_help'] = 'This setting determines the number of history 
 $string['loadmoreusers'] = 'Load more users...';
 $string['pluginname'] = 'Grade history';
 $string['preferences'] = 'Grade history preferences';
-$string['revisedonly'] = 'Revised grades only';
-$string['revisedonly_help'] = 'Only show grades which have been revised.
-
-This means only entries which result in the grade changing are listed.';
 $string['selectuser'] = 'Select user';
 $string['selectusers'] = 'Select users';
 $string['selectedusers'] = 'Selected users';

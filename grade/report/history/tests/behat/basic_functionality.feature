@@ -49,15 +49,15 @@ Feature: A teacher checks the grade history report in a course
     And I press "Save changes"
     When I follow "Grade history"
     Then the following should exist in the "gradereport_history" table:
-      | First name/Surname | Grade item                    | Original grade | Revised grade | Grader    |
-      | Student 1          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
-      | Student 1          | Rewarding assignment          |                | 60.00         | Teacher 1 |
-      | Student 2          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
-      | Student 2          | Rewarding assignment          |                | 60.00         | Teacher 1 |
-      | Student 1          | The greatest assignment ever  | 50.00          | 70.00         | Teacher 2 |
-      | Student 1          | Rewarding assignment          | 60.00          | 80.00         | Teacher 2 |
-      | Student 2          | The greatest assignment ever  | 50.00          | 70.00         | Teacher 2 |
-      | Student 2          | Rewarding assignment          | 60.00          | 80.00         | Teacher 2 |
+      | First name/Surname | Grade item                    | Original grade | Grader    |
+      | Student 1          | The greatest assignment ever  |                | Teacher 1 |
+      | Student 1          | Rewarding assignment          |                | Teacher 1 |
+      | Student 2          | The greatest assignment ever  |                | Teacher 1 |
+      | Student 2          | Rewarding assignment          |                | Teacher 1 |
+      | Student 1          | The greatest assignment ever  | 50.00          | Teacher 2 |
+      | Student 1          | Rewarding assignment          | 60.00          | Teacher 2 |
+      | Student 2          | The greatest assignment ever  | 50.00          | Teacher 2 |
+      | Student 2          | Rewarding assignment          | 60.00          | Teacher 2 |
     # Test filtering by student.
     And I press "Select users"
     And I set the field with xpath "//form/input[@class='usp-search-field']" to "Student 1"
@@ -66,37 +66,31 @@ Feature: A teacher checks the grade history report in a course
     And I press "Finish selecting users"
     And I press "Submit"
     And the following should exist in the "gradereport_history" table:
-      | First name/Surname | Grade item                    | Original grade | Revised grade | Grader    |
-      | Student 1          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
-      | Student 1          | Rewarding assignment          |                | 60.00         | Teacher 1 |
-      | Student 1          | The greatest assignment ever  | 50.00          | 70.00         | Teacher 2 |
-      | Student 1          | Rewarding assignment          | 60.00          | 80.00         | Teacher 2 |
+      | First name/Surname | Grade item                    | Original grade | Grader    |
+      | Student 1          | The greatest assignment ever  |                | Teacher 1 |
+      | Student 1          | Rewarding assignment          |                | Teacher 1 |
+      | Student 1          | The greatest assignment ever  | 50.00          | Teacher 2 |
+      | Student 1          | Rewarding assignment          | 60.00          | Teacher 2 |
     And the following should not exist in the "gradereport_history" table:
-      | Student 2          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
-      | Student 2          | Rewarding assignment          |                | 60.00         | Teacher 1 |
-      | Student 2          | The greatest assignment ever  | 50.00          | 70.00         | Teacher 2 |
-      | Student 2          | Rewarding assignment          | 60.00          | 80.00         | Teacher 2 |
+      | Student 2          | The greatest assignment ever  |                | Teacher 1 |
+      | Student 2          | Rewarding assignment          |                | Teacher 1 |
+      | Student 2          | The greatest assignment ever  | 50.00          | Teacher 2 |
+      | Student 2          | Rewarding assignment          | 60.00          | Teacher 2 |
     # Test filtering by assignment.
     And I click on "The greatest assignment ever" "option" in the "#id_itemid" "css_element"
     And I press "Submit"
     And the following should exist in the "gradereport_history" table:
-      | First name/Surname | Grade item                    | Original grade | Revised grade | Grader    |
-      | Student 1          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
-      | Student 1          | The greatest assignment ever  | 50.00          | 70.00         | Teacher 2 |
+      | First name/Surname | Grade item                    | Original grade | Grader    |
+      | Student 1          | The greatest assignment ever  |                | Teacher 1 |
+      | Student 1          | The greatest assignment ever  | 50.00          | Teacher 2 |
     And the following should not exist in the "gradereport_history" table:
-      | Student 1          | Rewarding assignment          |                | 60.00         | Teacher 1 |
-      | Student 1          | Rewarding assignment          | 60.00          | 80.00         | Teacher 2 |
+      | Student 1          | Rewarding assignment          |                | Teacher 1 |
+      | Student 1          | Rewarding assignment          | 60.00          | Teacher 2 |
     # Test filtering by grader.
     And I click on "Teacher 1" "option" in the "#id_grader" "css_element"
     And I press "Submit"
     And the following should exist in the "gradereport_history" table:
-      | First name/Surname | Grade item                    | Original grade | Revised grade | Grader    |
-      | Student 1          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
+      | First name/Surname | Grade item                    | Original grade | Grader    |
+      | Student 1          | The greatest assignment ever  |                | Teacher 1 |
     And the following should not exist in the "gradereport_history" table:
-      | Student 1          | The greatest assignment ever  | 50.00          | 70.00         | Teacher 2 |
-    # Test filtering by revised grades.
-    And I click on "id_revisedonly" "checkbox"
-    And I press "Submit"
-    And the following should exist in the "gradereport_history" table:
-      | First name/Surname | Grade item                    | Original grade | Revised grade | Grader    |
-      | Student 1          | The greatest assignment ever  |                | 50.00         | Teacher 1 |
+      | Student 1          | The greatest assignment ever  | 50.00          | Teacher 2 |

@@ -151,18 +151,10 @@ class gradereport_history_report_testcase extends advanced_testcase {
 
         // Filtering based on revised only.
         $this->assertEquals(3, $this->get_tablelog_results($c2ctx, array('userids' => $u5->id), true));
-        $this->assertEquals(1, $this->get_tablelog_results($c2ctx, array('userids' => $u5->id, 'revisedonly' => true), true));
 
         // More filtering based on revised only.
         $gi = grade_item::fetch($giparams + array('iteminstance' => $c2m2->id));
         $this->assertEquals(6, $this->get_tablelog_results($c2ctx, array('userids' => $u1->id, 'itemid' => $gi->id), true));
-        $results = $this->get_tablelog_results($c2ctx, array('userids' => $u1->id, 'itemid' => $gi->id, 'revisedonly' => true));
-        $this->assertGradeHistoryIds(array($grades['c2m2u1a']->id, $grades['c2m2u1c']->id, $grades['c2m2u1e']->id), $results);
-
-        // Checking the value of the previous grade.
-        $this->assertEquals(null, $results[$grades['c2m2u1a']->id]->prevgrade);
-        $this->assertEquals($grades['c2m2u1a']->finalgrade, $results[$grades['c2m2u1c']->id]->prevgrade);
-        $this->assertEquals($grades['c2m2u1c']->finalgrade, $results[$grades['c2m2u1e']->id]->prevgrade);
     }
 
     /**
