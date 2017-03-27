@@ -6398,7 +6398,7 @@ function prevent_form_autofill_password() {
  * @return void modifies $accessdata parameter
  */
 function load_course_context($userid, context_course $coursecontext, &$accessdata) {
-    throw new coding_exception('load_course_context() is removed. Please do not use accesslib private functions or data structures.');
+    throw new coding_exception('load_course_context() is removed. Do not use private functions or data structures.');
 }
 
 /**
@@ -6412,7 +6412,7 @@ function load_course_context($userid, context_course $coursecontext, &$accessdat
  * @return array
  */
 function load_role_access_by_context($roleid, context $context, &$accessdata) {
-    throw new coding_exception('load_role_access_by_context() is removed. Please do not use accesslib private functions or data structures.');
+    throw new coding_exception('load_role_access_by_context() is removed. Do not use private functions or data structures.');
 }
 
 /**
@@ -6423,7 +6423,7 @@ function load_role_access_by_context($roleid, context $context, &$accessdata) {
  * @return void
  */
 function dedupe_user_access() {
-    throw new coding_exception('dedupe_user_access() is removed. Please do not use accesslib private functions or data structures.');
+    throw new coding_exception('dedupe_user_access() is removed. Do not use private functions or data structures.');
 }
 
 /**
@@ -6440,7 +6440,7 @@ function dedupe_user_access() {
  * @return array access info array
  */
 function get_user_access_sitewide($userid) {
-    debugging('get_user_access_sitewide() is deprecated. Please do not use accesslib private functions or data structures.', DEBUG_DEVELOPER);
+    debugging('get_user_access_sitewide() is deprecated. Do not use private functions or data structures.', DEBUG_DEVELOPER);
 
     $accessdata = get_user_accessdata($userid);
     $accessdata['rdef'] = array();
