@@ -80,7 +80,10 @@ if ($phpunitversion === '@package_version@') {
 }
 unset($phpunitversion);
 
-define('NO_OUTPUT_BUFFERING', true);
+// Enable output buffering for PHPUnit tests to avoid triggering "headers_sent",
+//  which would prevent us from setting the session save handler.
+define('NO_OUTPUT_BUFFERING', false);
+ob_start();
 
 // only load CFG from config.php, stop ASAP in lib/setup.php
 define('ABORT_AFTER_CONFIG', true);
