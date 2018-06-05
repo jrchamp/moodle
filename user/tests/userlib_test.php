@@ -538,6 +538,7 @@ class core_userliblib_testcase extends advanced_testcase {
 
         // Remove capability moodle/user:viewdetails in course 2.
         assign_capability('moodle/user:viewdetails', CAP_PROHIBIT, $studentrole->id, $coursecontext);
+// affects a specific role in a specific context; capability overrides
         $coursecontext->mark_dirty();
         // Set current user to user 1.
         $this->setUser($user1);
@@ -644,12 +645,14 @@ class core_userliblib_testcase extends advanced_testcase {
         $systemcontext = context_system::instance();
         assign_capability('moodle/user:viewdetails', CAP_PREVENT, $managerrole->id, $systemcontext, true);
         assign_capability('moodle/user:viewalldetails', CAP_PREVENT, $managerrole->id, $systemcontext, true);
-        $systemcontext->mark_dirty();
+// affects a specific role in a specific context; role definition
+        accesslib_clear_role_cache($managerrole->id);
 
         // And override these to 'Allow' in a specific course.
         $course4context = context_course::instance($course4->id);
         assign_capability('moodle/user:viewalldetails', CAP_ALLOW, $managerrole->id, $course4context, true);
         assign_capability('moodle/user:viewdetails', CAP_ALLOW, $managerrole->id, $course4context, true);
+// affects a specific role in a specific context; capability overrides
         $course4context->mark_dirty();
 
         // The manager now shouldn't have viewdetails in the system or user context.

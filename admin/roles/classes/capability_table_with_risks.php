@@ -125,6 +125,7 @@ abstract class core_role_capability_table_with_risks extends core_role_capabilit
         }
 
         // Force accessinfo refresh for users visiting this context.
+// affects users with a specific role in a specific context; capability overrides
         $this->context->mark_dirty();
     }
 

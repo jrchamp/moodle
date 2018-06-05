@@ -446,6 +446,7 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
         $DB->set_field('course_categories', 'path', $path, array('id' => $newcategory->id));
 
         // We should mark the context as dirty.
+// affects a specific context; role assignments and role overrides
         context_coursecat::instance($newcategory->id)->mark_dirty();
 
         fix_course_sortorder();

@@ -1987,6 +1987,7 @@ abstract class enrol_plugin {
         $ue->modifierid = $USER->id;
         $ue->timemodified = time();
         $DB->update_record('user_enrolments', $ue);
+// affects a specific user in a specific context; role assignments
         context_course::instance($instance->courseid)->mark_dirty(); // reset enrol caches
 
         // Invalidate core_access cache for get_suspended_userids.
@@ -2086,6 +2087,7 @@ abstract class enrol_plugin {
                 );
         $event->trigger();
         // reset all enrol caches
+// affects a specific user in a specific context; role assignments, user enrolment
         $context->mark_dirty();
 
         // Check if courrse contacts cache needs to be cleared.
@@ -2421,6 +2423,7 @@ abstract class enrol_plugin {
         \core\event\enrol_instance_updated::create_from_record($instance)->trigger();
 
         // Invalidate all enrol caches.
+// affects a specific context; role assignments, user enrolment
         $context->mark_dirty();
     }
 
@@ -2460,6 +2463,7 @@ abstract class enrol_plugin {
         \core\event\enrol_instance_deleted::create_from_record($instance)->trigger();
 
         // Invalidate all enrol caches.
+// affects a specific context; role assignments, user enrolment
         $context->mark_dirty();
     }
 

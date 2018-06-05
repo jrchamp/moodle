@@ -155,6 +155,7 @@ class mod_forum_subscriptions_testcase extends advanced_testcase {
         $roleids = $DB->get_records_menu('role', null, '', 'shortname, id');
         $context = \context_course::instance($course->id);
         assign_capability('moodle/course:viewhiddenactivities', CAP_ALLOW, $roleids['student'], $context);
+// affects a specific role in a specific context; capability overrides
         $context->mark_dirty();
 
         // All of the unsubscribable forums should now be listed.
@@ -906,6 +907,7 @@ class mod_forum_subscriptions_testcase extends advanced_testcase {
         $cm = get_coursemodule_from_instance('forum', $forum->id);
         $context = \context_module::instance($cm->id);
         assign_capability('mod/forum:allowforcesubscribe', CAP_PROHIBIT, $roleids['student'], $context);
+// affects a specific role in a specific context; capability overrides
         $context->mark_dirty();
         $this->assertFalse(has_capability('mod/forum:allowforcesubscribe', $context, $user->id));
 

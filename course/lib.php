@@ -2497,6 +2497,7 @@ function create_course($data, $editoroptions = NULL) {
     cache_helper::purge_by_event('changesincourse');
 
     // new context created - better mark it as dirty
+// affects users within a specific context; role assignments and role overrides
     $context->mark_dirty();
 
     // Trigger a course created event.

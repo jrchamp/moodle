@@ -201,6 +201,7 @@ function accesslib_clear_all_caches_for_unit_testing() {
     }
 
     accesslib_clear_all_caches(true);
+    accesslib_reset_role_cache();
 
     unset($USER->access);
 }
@@ -219,14 +220,19 @@ function accesslib_clear_all_caches($resetcontexts) {
 
     $ACCESSLIB_PRIVATE->dirtycontexts    = null;
     $ACCESSLIB_PRIVATE->accessdatabyuser = array();
-    $ACCESSLIB_PRIVATE->cacheroledefs    = array();
-
-    $cache = cache::make('core', 'roledefs');
-    $cache->purge();
 
     if ($resetcontexts) {
         context_helper::reset_caches();
     }
+}
+
+// FULL ROLE DEFINITION CLEAR - see accesslib_clear_role_cache for role-specific clear
+function accesslib_reset_role_cache() {
+    global $ACCESSLIB_PRIVATE;
+
+    $ACCESSLIB_PRIVATE->cacheroledefs    = array();
+    $cache = cache::make('core', 'roledefs');
+    $cache->purge();
 }
 
 /**
@@ -1485,6 +1491,7 @@ function role_assign($roleid, $userid, $contextid, $component = '', $itemid = 0,
     $ra->id = $DB->insert_record('role_assignments', $ra);
 
     // mark context as dirty - again expensive, but needed
+// affects a specific user with a specific role in a specific context; role assignments
     $context->mark_dirty();
 
     if (!empty($USER->id) && $USER->id == $userid) {
@@ -1586,9 +1593,12 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
         $DB->delete_records('role_assignments', array('id'=>$ra->id));
         if ($context = context::instance_by_id($ra->contextid, IGNORE_MISSING)) {
             // this is a bit expensive but necessary
+// affects a specific user with a specific role in a specific context; role assignments
+// overreaches by affecting the entire context
             $context->mark_dirty();
             // If the user is the current user, then do full reload of capabilities too.
             if (!empty($USER->id) && $USER->id == $ra->userid) {
+// could wastefully reload capabilities multiple times
                 reload_all_capabilities();
             }
             $event = \core\event\role_unassigned::create(array(
@@ -1625,9 +1635,12 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
                 foreach($ras as $ra) {
                     $DB->delete_records('role_assignments', array('id'=>$ra->id));
                     // this is a bit expensive but necessary
+// affects a specific user with a specific role in a specific context; role assignments
+// overreaches by affecting the entire context
                     $context->mark_dirty();
                     // If the user is the current user, then do full reload of capabilities too.
                     if (!empty($USER->id) && $USER->id == $ra->userid) {
+// could wastefully reload capabilities multiple times
                         reload_all_capabilities();
                     }
                     $event = \core\event\role_unassigned::create(
@@ -2090,9 +2103,6 @@ function reset_role_capabilities($roleid) {
 
     // Reset any cache of this role, including MUC.
     accesslib_clear_role_cache($roleid);
-
-    // Mark the system context dirty.
-    context_system::instance()->mark_dirty();
 }
 
 /**
@@ -2210,7 +2220,7 @@ function update_capabilities($component = 'moodle') {
     capabilities_cleanup($component, $filecaps);
 
     // reset static caches
-    accesslib_clear_all_caches(false);
+    accesslib_reset_role_cache();
 
     // Flush the cached again, as we have changed DB.
     cache::make('core', 'capabilities')->delete('core_capabilities');
@@ -4612,7 +4622,14 @@ function role_change_permission($roleid, $context, $capname, $permission) {
 
     if ($permission == CAP_INHERIT) {
         unassign_capability($capname, $roleid, $context->id);
-        $context->mark_dirty();
+// affects a specific role in a specific context; role definition when context is 1, role override otherwise
+        if ($context->id === SYSCONTEXTID) {
+            // Clear the affected role's role definition cache
+            accesslib_clear_role_cache($roleid);
+        } else {
+            // Mark the child context dirty (no role definition cache clear required)
+            $context->mark_dirty();
+        }
         return;
     }
 
@@ -4645,6 +4662,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
                 // permission already set in parent context or parent - just unset in this context
                 // we do this because we want as few overrides as possible for performance reasons
                 unassign_capability($capname, $roleid, $context->id);
+// affects a specific role in a specific context; role override
                 $context->mark_dirty();
                 return;
             }
@@ -4661,7 +4679,14 @@ function role_change_permission($roleid, $context, $capname, $permission) {
     assign_capability($capname, $permission, $roleid, $context->id, true);
 
     // force cap reloading
-    $context->mark_dirty();
+// affects a specific role in a specific context; role definition when context is 1, role override otherwise
+    if ($context->id === SYSCONTEXTID) {
+        // Clear the affected role's role definition cache
+        accesslib_clear_role_cache($roleid);
+    } else {
+        // Mark the child context dirty (no role definition cache clear required)
+        $context->mark_dirty();
+    }
 }
 
 
@@ -5086,6 +5111,7 @@ abstract class context extends stdClass implements IteratorAggregate {
 
         $trans = $DB->start_delegated_transaction();
 
+// affects a specific context; role assignments and role overrides
         $this->mark_dirty();
 
         $setdepth = '';
@@ -5110,6 +5136,7 @@ abstract class context extends stdClass implements IteratorAggregate {
         $params = array($newpath, "{$frompath}/%");
         $DB->execute($sql, $params);
 
+// affects a specific context; role assignments and role overrides
         $this->mark_dirty();
 
         context::reset_caches();
@@ -5127,6 +5154,7 @@ abstract class context extends stdClass implements IteratorAggregate {
         global $DB;
 
         if ($this->_path) {
+// affects a specific context; role assignments and role overrides
             $this->mark_dirty();
         }
         $DB->set_field_select('context', 'depth', 0, "path LIKE '%/$this->_id/%'");
@@ -5212,6 +5240,7 @@ abstract class context extends stdClass implements IteratorAggregate {
 
         // do not mark dirty contexts if parents unknown
         if (!is_null($this->_path) and $this->_depth > 0) {
+// affects a specific context; role assignments and role overrides
             $this->mark_dirty();
         }
     }

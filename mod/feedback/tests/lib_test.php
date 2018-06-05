@@ -279,6 +279,7 @@ class mod_feedback_lib_testcase extends advanced_testcase {
 
         $this->setUser($user);
         assign_capability('mod/feedback:complete', CAP_PROHIBIT, $studentrole->id, $context);
+// affects a specific role in a specific context; capability overrides
         $context->mark_dirty();
 
         $factory = new \core_calendar\action_factory();
