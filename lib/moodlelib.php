@@ -5319,7 +5319,7 @@ function reset_course_userdata($data) {
         }
         $DB->delete_records('role_capabilities', array('contextid' => $context->id));
         // Force refresh for logged in users.
-// affects a specific context; role overrides
+// affects a specific context; role overrides (perhaps this should call accesslib_reset_role_cache() instead to clear all role definitions?)
         $context->mark_dirty();
         $status[] = array('component' => $componentstr, 'item' => get_string('deletecourseoverrides', 'role'), 'error' => false);
     }

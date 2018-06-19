@@ -1646,7 +1646,7 @@ class core_questionlib_testcase extends advanced_testcase {
         foreach ($capabilities as $capname => $capvalue) {
             assign_capability($capname, $capvalue, $roleid, $context->id);
         }
-        $context->mark_dirty();
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         $this->setUser($user);
 
@@ -1696,7 +1696,7 @@ class core_questionlib_testcase extends advanced_testcase {
         foreach ($capabilities as $capname => $capvalue) {
             assign_capability($capname, $capvalue, $roleid, $context->id);
         }
-        $context->mark_dirty();
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         // Create the question.
         $qtype = 'truefalse';
@@ -1748,7 +1748,7 @@ class core_questionlib_testcase extends advanced_testcase {
         foreach ($capabilities as $capname => $capvalue) {
             assign_capability($capname, $capvalue, $roleid, $context->id);
         }
-        $context->mark_dirty();
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         // Create the question.
         $qtype = 'truefalse';
@@ -1800,7 +1800,7 @@ class core_questionlib_testcase extends advanced_testcase {
         foreach ($capabilities as $capname => $capvalue) {
             assign_capability($capname, $capvalue, $roleid, $context->id);
         }
-        $context->mark_dirty();
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         // Create the question.
         $qtype = 'truefalse';
@@ -1858,8 +1858,7 @@ class core_questionlib_testcase extends advanced_testcase {
         foreach ($capabilities as $capname => $capvalue) {
             assign_capability($capname, $capvalue, $roleid, $newcontext->id);
         }
-        $context->mark_dirty();
-        $newcontext->mark_dirty();
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         // Create the question.
         $qtype = 'truefalse';
@@ -1915,7 +1914,7 @@ class core_questionlib_testcase extends advanced_testcase {
         foreach ($capabilities as $capname => $capvalue) {
             assign_capability($capname, $capvalue, $roleid, $context->id);
         }
-        $context->mark_dirty();
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         // Create the question.
         $question = $questiongenerator->create_question('truefalse', null, [

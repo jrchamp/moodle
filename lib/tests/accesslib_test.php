@@ -196,8 +196,7 @@ class core_accesslib_testcase extends advanced_testcase {
 
         // Prevent the capability for this user role.
         assign_capability($capability, CAP_PROHIBIT, $role->id, $coursecontext);
-// affects a specific role in a specific context; role overrides
-        $coursecontext->mark_dirty();
+// affects a specific role in a specific context; role overrides (cache cleared by assign_capability)
         $this->assertFalse(has_capability($capability, $coursecontext, $user->id));
 
         // Again, we seed the cache first by checking initial enrolment,

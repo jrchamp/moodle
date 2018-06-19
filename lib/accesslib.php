@@ -1280,8 +1280,6 @@ function delete_role($roleid) {
 /**
  * Function to write context specific overrides, or default capabilities.
  *
- * NOTE: use $context->mark_dirty() after this
- *
  * @param string $capability string name
  * @param int $permission CAP_ constants
  * @param int $roleid role id
@@ -1334,8 +1332,6 @@ function assign_capability($capability, $permission, $roleid, $contextid, $overw
 
 /**
  * Unassign a capability from a role.
- *
- * NOTE: use $context->mark_dirty() after this
  *
  * @param string $capability the name of the capability
  * @param int $roleid the role id
@@ -1495,7 +1491,7 @@ function role_assign($roleid, $userid, $contextid, $component = '', $itemid = 0,
 
     // mark context as dirty - again expensive, but needed
 // affects a specific user with a specific role in a specific context; role assignments
-    context_helper::mark_user_dirty($userid);
+    mark_user_dirty($userid);
 
     require_once($CFG->libdir . '/coursecatlib.php');
     coursecat::role_assignment_changed($roleid, $context);
@@ -1592,7 +1588,7 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
         if ($context = context::instance_by_id($ra->contextid, IGNORE_MISSING)) {
             // this is a bit expensive but necessary
 // affects a specific user with a specific role in a specific context; role assignments
-            context_helper::mark_user_dirty($ra->userid);
+            mark_user_dirty($ra->userid);
 
             $event = \core\event\role_unassigned::create(array(
                 'context' => $context,
@@ -1629,7 +1625,7 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
                     $DB->delete_records('role_assignments', array('id'=>$ra->id));
                     // this is a bit expensive but necessary
 // affects a specific user with a specific role in a specific context; role assignments
-                    context_helper::mark_user_dirty($ra->userid);
+                    mark_user_dirty($ra->userid);
 
                     $event = \core\event\role_unassigned::create(
                         array('context'=>$context, 'objectid'=>$ra->roleid, 'relateduserid'=>$ra->userid,
@@ -1646,6 +1642,31 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
     if ($includemanual) {
         $params['component'] = '';
         role_unassign_all($params, $subcontexts, false);
+    }
+}
+
+/**
+ * Mark a user as dirty (with timestamp) so as to force reloading of the user session.
+ */
+function mark_user_dirty($userid) {
+    global $CFG, $USER, $ACCESSLIB_PRIVATE;
+
+    if (during_initial_install()) {
+        return;
+    }
+
+    // only if it is a non-empty value
+    if (empty($userid)) {
+        throw new coding_exception('Invalid user parameter supplied for mark_user_dirty() function!');
+    }
+
+    set_cache_flag('accesslib/dirtyusers', $userid, 1, time()+$CFG->sessiontimeout);
+    if (!empty($USER->id) && $USER->id == $userid) {
+        // If the user is the current user, then do full reload of capabilities.
+        reload_all_capabilities();
+    } else {
+        // If the user is not the current user, then clear the accessdata cache.
+        unset($ACCESSLIB_PRIVATE->accessdatabyuser[$userid]);
     }
 }
 
@@ -4610,14 +4631,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
 
     if ($permission == CAP_INHERIT) {
         unassign_capability($capname, $roleid, $context->id);
-// affects a specific role in a specific context; role definition when context is 1, role override otherwise
-        if ($context->id === SYSCONTEXTID) {
-            // Clear the affected role's role definition cache
-            accesslib_clear_role_cache($roleid);
-        } else {
-            // Mark the child context dirty (no role definition cache clear required)
-            $context->mark_dirty();
-        }
+// affects a specific role in a specific context; role definition when context is 1, role override otherwise (cache cleared by unassign_capability)
         return;
     }
 
@@ -4650,8 +4664,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
                 // permission already set in parent context or parent - just unset in this context
                 // we do this because we want as few overrides as possible for performance reasons
                 unassign_capability($capname, $roleid, $context->id);
-// affects a specific role in a specific context; role override
-                $context->mark_dirty();
+// affects a specific role in a specific context; role override (cache cleared by unassign_capability)
                 return;
             }
         }
@@ -4667,14 +4680,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
     assign_capability($capname, $permission, $roleid, $context->id, true);
 
     // force cap reloading
-// affects a specific role in a specific context; role definition when context is 1, role override otherwise
-    if ($context->id === SYSCONTEXTID) {
-        // Clear the affected role's role definition cache
-        accesslib_clear_role_cache($roleid);
-    } else {
-        // Mark the child context dirty (no role definition cache clear required)
-        $context->mark_dirty();
-    }
+// affects a specific role in a specific context; role definition when context is 1, role override otherwise (cache cleared by assign_capability)
 }
 
 
@@ -5782,29 +5788,6 @@ class context_helper extends context {
     public static function get_level_name($contextlevel) {
         $classname = context_helper::get_class_for_level($contextlevel);
         return $classname::get_level_name();
-    }
-
-    /**
-     * Mark a user as dirty (with timestamp) so as to force reloading of the user session.
-     */
-    public static function mark_user_dirty($userid) {
-        global $CFG, $USER, $ACCESSLIB_PRIVATE;
-
-        if (during_initial_install()) {
-            return;
-        }
-
-        // only if it is a non-empty value
-        if (!empty($userid)) {
-            set_cache_flag('accesslib/dirtyusers', $userid, 1, time()+$CFG->sessiontimeout);
-            if (!empty($USER->id) && $USER->id == $userid) {
-                // If the user is the current user, then do full reload of capabilities.
-                reload_all_capabilities();
-            } else {
-                // If the user is not the current user, then clear the accessdata cache.
-                unset($ACCESSLIB_PRIVATE->accessdatabyuser[$userid]);
-            }
-        }
     }
 
     /**

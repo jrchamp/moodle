@@ -941,8 +941,7 @@ class core_course_courselib_testcase extends advanced_testcase {
         $modulecontext = context_module::instance($assign1->cmid);
         assign_capability('moodle/course:manageactivities', CAP_PROHIBIT, $roleids['editingteacher'],
             $modulecontext);
-// affects users with a specific role in a specific context; role overrides
-        $modulecontext->mark_dirty();
+// affects users with a specific role in a specific context; role overrides (cache cleared by assign_capability)
         $this->assertFalse(course_can_delete_section($courseweeks, 1));
         $this->assertTrue(course_can_delete_section($courseweeks, 2));
 
@@ -3070,8 +3069,7 @@ class core_course_courselib_testcase extends advanced_testcase {
         $CFG->enableblogs = 0;
         // Disable view participants capability.
         assign_capability('moodle/course:viewparticipants', CAP_PROHIBIT, $roleid, $context);
-// affects users with a specific role in a specific context; role overrides
-        $context->mark_dirty();
+// affects users with a specific role in a specific context; role overrides (cache cleared by assign_capability)
 
         $navoptions = course_get_user_navigation_options($context);
         $this->assertFalse($navoptions->blogs);
