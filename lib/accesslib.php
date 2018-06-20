@@ -232,7 +232,7 @@ function accesslib_clear_all_caches($resetcontexts) {
 function accesslib_reset_role_cache() {
     global $ACCESSLIB_PRIVATE;
 
-    $ACCESSLIB_PRIVATE->cacheroledefs    = array();
+    $ACCESSLIB_PRIVATE->cacheroledefs = array();
     $cache = cache::make('core', 'roledefs');
     $cache->purge();
 }
@@ -2393,8 +2393,6 @@ function is_inside_frontpage(context $context) {
  * @return stdClass or null if capability not found
  */
 function get_capability_info($capabilityname) {
-    global $ACCESSLIB_PRIVATE, $DB; // one request per page only
-
     $caps = get_all_capabilities();
 
     if (!isset($caps[$capabilityname])) {
