@@ -86,15 +86,11 @@ switch ($action) {
         }
         if (!delete_role($roleid)) {
             // The delete failed, but mark the context dirty in case.
-// affects users with a specific role; role definition and role assignments
-            accesslib_clear_role_cache($roleid);
-            $systemcontext->mark_dirty();
+// affects users with a specific role; role definition and role assignments (cache cleared by delete_role)
             print_error('cannotdeleterolewithid', 'error', $baseurl, $roleid);
         }
         // Deleted a role sitewide...
-// affects users with a specific role; role definition and role assignments
-        accesslib_clear_role_cache($roleid);
-        $systemcontext->mark_dirty();
+// affects users with a specific role; role definition and role assignments (cache cleared by delete_role)
         redirect($baseurl);
         break;
 

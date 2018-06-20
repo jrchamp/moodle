@@ -5103,8 +5103,8 @@ abstract class context extends stdClass implements IteratorAggregate {
 
         $trans = $DB->start_delegated_transaction();
 
-// affects a specific context; role assignments and role overrides
-        $this->mark_dirty();
+// affects a specific context; role assignments and role overrides (NOT NEEDED? If the context path is changed, then we won't ever call reload_if_dirty on an old context path)
+//        $this->mark_dirty();
 
         $setdepth = '';
         if (($newparent->depth +1) != $this->_depth) {
@@ -5231,10 +5231,10 @@ abstract class context extends stdClass implements IteratorAggregate {
         context::cache_remove($this);
 
         // do not mark dirty contexts if parents unknown
-        if (!is_null($this->_path) and $this->_depth > 0) {
-// affects a specific context; role assignments and role overrides
-            $this->mark_dirty();
-        }
+// affects a specific context; role assignments and role overrides (NOT NEEDED? If the context is deleted, then we won't ever call reload_if_dirty on the context)
+//        if (!is_null($this->_path) and $this->_depth > 0) {
+//            $this->mark_dirty();
+//        }
     }
 
     // ====== context level related methods ======
