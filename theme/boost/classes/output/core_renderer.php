@@ -511,12 +511,7 @@ class core_renderer extends \core_renderer {
                 $showcoursemenu = true;
             } else if (!empty($activenode) && ($activenode->type == navigation_node::TYPE_ACTIVITY ||
                     $activenode->type == navigation_node::TYPE_RESOURCE)) {
-
-                // We only want to show the menu on the first page of the activity. This means
-                // the breadcrumb has no additional nodes.
-                if ($currentnode && ($currentnode->key == $activenode->key && $currentnode->type == $activenode->type)) {
-                    $showcoursemenu = true;
-                }
+                $showcoursemenu = true;
             }
         }
 
@@ -594,14 +589,7 @@ class core_renderer extends \core_renderer {
                 $buildmenu = true;
             } else if (!empty($node) && ($node->type == navigation_node::TYPE_ACTIVITY ||
                     $node->type == navigation_node::TYPE_RESOURCE)) {
-
-                $items = $this->page->navbar->get_items();
-                $navbarnode = end($items);
-                // We only want to show the menu on the first page of the activity. This means
-                // the breadcrumb has no additional nodes.
-                if ($navbarnode && ($navbarnode->key === $node->key && $navbarnode->type == $node->type)) {
-                    $buildmenu = true;
-                }
+                $buildmenu = true;
             }
             if ($buildmenu) {
                 // Get the course admin node from the settings navigation.
