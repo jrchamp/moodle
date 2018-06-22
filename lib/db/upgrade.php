@@ -482,21 +482,9 @@ function xmldb_main_upgrade($oldversion) {
         $capability = 'moodle/site:configview';
 
         foreach ($coursecreatorroleids as $roleid => $notused) {
-
-            // Check that the capability has not already been assigned. If it has then it's either already set
+            // Only set the capability if it has not already been assigned. If it has then it's either already set
             // to allow or specifically set to prohibit or prevent.
-            if (!$DB->record_exists('role_capabilities', array('roleid' => $roleid, 'capability' => $capability))) {
-                // Assign the capability.
-                $cap = new stdClass();
-                $cap->contextid    = $context->id;
-                $cap->roleid       = $roleid;
-                $cap->capability   = $capability;
-                $cap->permission   = CAP_ALLOW;
-                $cap->timemodified = time();
-                $cap->modifierid   = 0;
-
-                $DB->insert_record('role_capabilities', $cap);
-            }
+            assign_capability($capability, CAP_ALLOW, $roleid, $context, false);
         }
 
         // Main savepoint reached.
