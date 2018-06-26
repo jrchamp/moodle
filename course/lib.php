@@ -2496,6 +2496,8 @@ function create_course($data, $editoroptions = NULL) {
     // purge appropriate caches in case fix_course_sortorder() did not change anything
     cache_helper::purge_by_event('changesincourse');
 
+// affects users within a specific context; role assignments (Not needed. This is a new context, so there's nothing dirty about it)
+
     // Trigger a course created event.
     $event = \core\event\course_created::create(array(
         'objectid' => $course->id,

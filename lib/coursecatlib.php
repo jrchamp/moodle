@@ -445,6 +445,8 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
         $path = $parent->path . '/' . $newcategory->id;
         $DB->set_field('course_categories', 'path', $path, array('id' => $newcategory->id));
 
+// affects a specific context; role assignments (Not needed. This is a new context, so there's nothing dirty about it)
+
         fix_course_sortorder();
 
         // If this is data from form results, save embedded files and update description.

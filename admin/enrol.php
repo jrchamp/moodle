@@ -51,6 +51,7 @@ switch ($action) {
         unset($enabled[$enrol]);
         set_config('enrol_plugins_enabled', implode(',', array_keys($enabled)));
         core_plugin_manager::reset_caches();
+// affects all users; role assignments
         $syscontext->mark_dirty(); // resets all enrol caches
         break;
 
@@ -62,6 +63,7 @@ switch ($action) {
         $enabled[] = $enrol;
         set_config('enrol_plugins_enabled', implode(',', $enabled));
         core_plugin_manager::reset_caches();
+// affects all users; role assignments
         $syscontext->mark_dirty(); // resets all enrol caches
         break;
 

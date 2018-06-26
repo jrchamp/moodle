@@ -1512,6 +1512,7 @@ function role_assign($roleid, $userid, $contextid, $component = '', $itemid = 0,
     $ra->id = $DB->insert_record('role_assignments', $ra);
 
     // Role assignments have changed, so mark user as dirty.
+// affects a specific user with a specific role in a specific context; role assignments
     mark_user_dirty($userid);
 
     require_once($CFG->libdir . '/coursecatlib.php');
@@ -1608,6 +1609,7 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
         $DB->delete_records('role_assignments', array('id'=>$ra->id));
         if ($context = context::instance_by_id($ra->contextid, IGNORE_MISSING)) {
             // Role assignments have changed, so mark user as dirty.
+// affects a specific user with a specific role in a specific context; role assignments
             mark_user_dirty($ra->userid);
 
             $event = \core\event\role_unassigned::create(array(
@@ -1644,6 +1646,7 @@ function role_unassign_all(array $params, $subcontexts = false, $includemanual =
                 foreach($ras as $ra) {
                     $DB->delete_records('role_assignments', array('id'=>$ra->id));
                     // Role assignments have changed, so mark user as dirty.
+// affects a specific user with a specific role in a specific context; role assignments
                     mark_user_dirty($ra->userid);
 
                     $event = \core\event\role_unassigned::create(
@@ -4651,6 +4654,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
 
     if ($permission == CAP_INHERIT) {
         unassign_capability($capname, $roleid, $context->id);
+// affects a specific role in a specific context; role definition when context is 1, role override otherwise (cache cleared by unassign_capability)
         return;
     }
 
@@ -4683,6 +4687,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
                 // permission already set in parent context or parent - just unset in this context
                 // we do this because we want as few overrides as possible for performance reasons
                 unassign_capability($capname, $roleid, $context->id);
+// affects a specific role in a specific context; role override (cache cleared by unassign_capability)
                 return;
             }
         }
@@ -4696,6 +4701,7 @@ function role_change_permission($roleid, $context, $capname, $permission) {
 
     // assign the needed capability
     assign_capability($capname, $permission, $roleid, $context->id, true);
+// affects a specific role in a specific context; role definition when context is 1, role override otherwise (cache cleared by assign_capability)
 }
 
 
@@ -5120,6 +5126,7 @@ abstract class context extends stdClass implements IteratorAggregate {
 
         $trans = $DB->start_delegated_transaction();
 
+// affects a specific context; role assignments and role overrides (Not needed. If the context path is changed, then we won't ever call reload_if_dirty on an old context path)
         $setdepth = '';
         if (($newparent->depth +1) != $this->_depth) {
             $diff = $newparent->depth - $this->_depth + 1;
@@ -5142,6 +5149,7 @@ abstract class context extends stdClass implements IteratorAggregate {
         $params = array($newpath, "{$frompath}/%");
         $DB->execute($sql, $params);
 
+// affects a specific context; role assignments and role overrides
         $this->mark_dirty();
 
         context::reset_caches();
@@ -5159,6 +5167,7 @@ abstract class context extends stdClass implements IteratorAggregate {
         global $DB;
 
         if ($this->_path) {
+// affects a specific context; role assignments and role overrides
             $this->mark_dirty();
         }
         $DB->set_field_select('context', 'depth', 0, "path LIKE '%/$this->_id/%'");
@@ -5249,6 +5258,7 @@ abstract class context extends stdClass implements IteratorAggregate {
         $DB->delete_records('context', array('id'=>$this->_id));
         // purge static context cache if entry present
         context::cache_remove($this);
+// affects a specific context; role assignments and role overrides (Not needed. If the context is deleted, then we won't ever call reload_if_dirty on the context)
     }
 
     // ====== context level related methods ======

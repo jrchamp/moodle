@@ -1825,6 +1825,7 @@ function upgrade_core($version, $verbose) {
         context_helper::create_instances(null, false);
         context_helper::build_all_paths(false);
         $syscontext = context_system::instance();
+// affects all user sessions; role assignments (likely just a precaution)
         $syscontext->mark_dirty();
 
         print_upgrade_part_end('moodle', false, $verbose);

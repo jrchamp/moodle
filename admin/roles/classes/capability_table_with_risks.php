@@ -123,6 +123,7 @@ abstract class core_role_capability_table_with_risks extends core_role_capabilit
             assign_capability($changedcap, $this->permissions[$changedcap],
                 $this->roleid, $this->context->id, true);
         }
+// affects users with a specific role in a specific context; capability overrides (cache cleared by assign_capability)
     }
 
     public function display() {

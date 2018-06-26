@@ -86,9 +86,11 @@ switch ($action) {
         }
         if (!delete_role($roleid)) {
             // The delete failed.
+// affects users with a specific role; role definition and role assignments (cache cleared by delete_role)
             print_error('cannotdeleterolewithid', 'error', $baseurl, $roleid);
         }
         // Deleted a role sitewide...
+// affects users with a specific role; role definition and role assignments (cache cleared by delete_role)
         redirect($baseurl);
         break;
 

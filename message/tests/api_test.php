@@ -254,6 +254,7 @@ class core_message_api_testcase extends core_message_messagelib_testcase {
         // Remove the viewparticipants capability from one of the courses.
         $course5context = context_course::instance($course5->id);
         assign_capability('moodle/course:viewparticipants', CAP_PROHIBIT, $role->id, $course5context->id);
+// affects a specific role in a specific context; capability overrides (cache cleared by assign_capability)
 
         // Perform a search.
         list($contacts, $courses, $noncontacts) = \core_message\api::search_users($user1->id, 'search');
