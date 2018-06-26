@@ -5332,6 +5332,7 @@ function reset_course_userdata($data) {
         foreach ($children as $child) {
             role_unassign_all(array('contextid' => $child->id));
         }
+// affects a specific context; role assignments (user already marked dirty by role_unassign_all)
         $status[] = array('component' => $componentstr, 'item' => get_string('deletelocalroles', 'role'), 'error' => false);
     }
 

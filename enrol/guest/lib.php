@@ -237,6 +237,7 @@ class enrol_guest_plugin extends enrol_plugin {
 
                     if ($reset) {
                         $context = context_course::instance($course->id);
+// affects users within a specific context; role assignments (guest access)
                         $context->mark_dirty();
                     }
                 }

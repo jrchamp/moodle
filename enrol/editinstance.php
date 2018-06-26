@@ -88,6 +88,7 @@ if ($mform->is_cancelled()) {
         $plugin->update_instance($instance, $data);
 
         if ($reset) {
+// affects users within a specific context; role assignments
             $context->mark_dirty();
         }
 

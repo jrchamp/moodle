@@ -196,6 +196,7 @@ class core_accesslib_testcase extends advanced_testcase {
 
         // Prevent the capability for this user role.
         assign_capability($capability, CAP_PROHIBIT, $role->id, $coursecontext);
+// affects a specific role in a specific context; role overrides (cache cleared by assign_capability)
         $this->assertFalse(has_capability($capability, $coursecontext, $user->id));
 
         // Again, we seed the cache first by checking initial enrolment,
@@ -3068,6 +3069,7 @@ class core_accesslib_testcase extends advanced_testcase {
 
         $DB->delete_records('cache_flags', array());
         accesslib_clear_all_caches(false);
+// just testing mark_dirty() and get_cache_flags()
         $systemcontext->mark_dirty();
         $dirty = get_cache_flags('accesslib/dirtycontexts', time()-2);
         $this->assertTrue(isset($dirty[$systemcontext->path]));
@@ -3084,12 +3086,14 @@ class core_accesslib_testcase extends advanced_testcase {
         $pagecm = get_coursemodule_from_instance('page', $page->id);
         $pagecontext = context_module::instance($pagecm->id);
 
+// just testing mark_dirty() and dirtycontexts
         $context->mark_dirty();
         $this->assertTrue(isset($ACCESSLIB_PRIVATE->dirtycontexts[$context->path]));
         $USER->access['test'] = true;
         $context->reload_if_dirty();
         $this->assertFalse(isset($USER->access['test']));
 
+// just testing mark_dirty() and dirtycontexts
         $context->mark_dirty();
         $this->assertTrue(isset($ACCESSLIB_PRIVATE->dirtycontexts[$context->path]));
         $USER->access['test'] = true;

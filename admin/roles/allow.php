@@ -46,6 +46,7 @@ $controller = new $classformode[$mode]();
 
 if (optional_param('submit', false, PARAM_BOOL) && data_submitted() && confirm_sesskey()) {
     $controller->process_submission();
+// role allow assign/override/switch is not cached and marking dirty does not reset role switch cache
     $event = null;
     // Create event depending on mode.
     switch ($mode) {

@@ -804,6 +804,7 @@ class tool_uploadcourse_course {
 
         // Mark context as dirty.
         $context = context_course::instance($course->id);
+// affects users within a specific context; role assignments and role overrides
         $context->mark_dirty();
     }
 
