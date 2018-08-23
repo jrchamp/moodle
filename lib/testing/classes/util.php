@@ -510,10 +510,9 @@ abstract class testing_util {
                     // incorrect table match caused by _
                     continue;
                 }
-                if (!is_null($info->auto_increment)) {
-                    $table = preg_replace('/^'.preg_quote($prefix, '/').'/', '', $table);
-                    $sequences[$table] = $info->auto_increment;
-                }
+
+                $table = preg_replace('/^' . preg_quote($prefix, '/') . '/', '', $table);
+                $sequences[$table] = $info->auto_increment ?? 1;
             }
             $rs->close();
             $prefix = $DB->get_prefix();
@@ -671,10 +670,9 @@ abstract class testing_util {
                     // Incorrect table match caused by _ char.
                     continue;
                 }
-                if (!is_null($info->auto_increment)) {
-                    $table = preg_replace('/^'.preg_quote($prefix, '/').'/', '', $table);
-                    $mysqlsequences[$table] = $info->auto_increment;
-                }
+
+                $table = preg_replace('/^' . preg_quote($prefix, '/') . '/', '', $table);
+                $mysqlsequences[$table] = $info->auto_increment ?? 1;
             }
             $rs->close();
         }
@@ -706,9 +704,7 @@ abstract class testing_util {
 
                 // Use TRUNCATE as a workaround and reinsert everything.
                 $DB->delete_records($table, null);
-                foreach ($records as $record) {
-                    $DB->import_record($table, $record, false, true);
-                }
+                $DB->import_records($table, $records);
                 continue;
             }
 
@@ -746,9 +742,7 @@ abstract class testing_util {
             }
 
             $DB->delete_records($table, array());
-            foreach ($records as $record) {
-                $DB->import_record($table, $record, false, true);
-            }
+            $DB->import_records($table, $records);
         }
 
         // reset all next record ids - aka sequences
