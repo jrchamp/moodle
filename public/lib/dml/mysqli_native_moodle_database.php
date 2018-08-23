@@ -1647,6 +1647,103 @@ class mysqli_native_moodle_database extends moodle_database {
     }
 
     /**
+     * Import multiple records into database as fast as possible, id field is required.
+     * Safety checks are NOT carried out. Lobs are supported.
+     *
+     * Operation is not atomic, use transactions if necessary.
+     *
+     * @since Moodle 5.2
+     *
+     * @param string $table  The database table to be inserted into
+     * @param iterable $dataobjects list of objects to be inserted, must be compatible with foreach
+     * @throws dml_exception A DML specific exception is thrown for any errors.
+     */
+    public function import_records(string $table, iterable $dataobjects): void {
+        // MySQL has a relatively small query length limit by default,
+        // make sure 'max_allowed_packet' in my.cnf is high enough
+        // if you change the following default.
+        static $chunksize = null;
+        if ($chunksize === null) {
+            if (!empty($this->dboptions['bulkinsertsize'])) {
+                $chunksize = (int) $this->dboptions['bulkinsertsize'];
+            } else {
+                $sql = "SHOW VARIABLES LIKE 'max_allowed_packet'";
+                $this->query_start($sql, null, SQL_QUERY_AUX);
+                $result = $this->mysqli->query($sql);
+                $this->query_end($result);
+                $size = 0;
+                if ($rec = $result->fetch_assoc()) {
+                    $size = $rec['Value'];
+                }
+                $result->close();
+                // Hopefully 200kb per object are enough.
+                $chunksize = (int)($size / 200000);
+                if ($chunksize > 50) {
+                    $chunksize = 50;
+                }
+            }
+        }
+
+        $columns = $this->get_columns($table, true);
+        $count = 0;
+        $chunk = [];
+        foreach ($dataobjects as $dataobject) {
+            $dataobject = (array) $dataobject;
+
+            $count++;
+            $chunk[] = $dataobject;
+
+            if ($count === $chunksize) {
+                $this->import_chunk($table, $chunk, $columns);
+                $chunk = [];
+                $count = 0;
+            }
+        }
+
+        if ($count) {
+            $this->import_chunk($table, $chunk, $columns);
+        }
+    }
+
+    /**
+     * Import records in chunks.
+     *
+     * Note: can be used only from import_records().
+     *
+     * @param string $table
+     * @param array $chunk
+     * @param database_column_info[] $columns
+     */
+    protected function import_chunk(string $table, array $chunk, array $columns): void {
+        $fieldssql = '(' . implode(',', array_keys($columns)) . ')';
+
+        $valuessql = '(?' . str_repeat(',?', count($columns) - 1) . ')';
+        $valuessql = $valuessql . str_repeat(',' . $valuessql, count($chunk) - 1);
+
+        $params = [];
+        foreach ($chunk as $dataobject) {
+            foreach ($columns as $field => $column) {
+                if (array_key_exists($field, $dataobject)) {
+                    $params[] = $this->normalise_value($column, $dataobject[$field]);
+                } else if ($column->has_default) {
+                    $params[] = $column->default_value;
+                } else {
+                    $params[] = null;
+                }
+            }
+        }
+
+        $sql = "INSERT INTO {$this->prefix}$table $fieldssql VALUES $valuessql";
+
+        [$sql, $params, $type] = $this->fix_sql_params($sql, $params);
+        $rawsql = $this->emulate_bound_params($sql, $params);
+
+        $this->query_start($sql, $params, SQL_QUERY_INSERT);
+        $result = $this->mysqli->query($rawsql);
+        $this->query_end($result);
+    }
+
+    /**
      * Update record in database, as fast as possible, no safety checks, lobs not supported.
      * @param string $table name
      * @param stdClass|array $params data record as object or array

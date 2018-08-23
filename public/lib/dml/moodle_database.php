@@ -1858,7 +1858,7 @@ abstract class moodle_database {
             } else if ($fields !== array_keys($dataobject)) {
                 throw new coding_exception('All dataobjects in insert_records() must have the same structure!');
             }
-            $this->insert_record($table, $dataobject, false);
+            $this->insert_record($table, $dataobject, false, true);
         }
     }
 
@@ -1872,6 +1872,24 @@ abstract class moodle_database {
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
     abstract public function import_record($table, $dataobject);
+
+    /**
+     * Import multiple records into database as fast as possible, id field is required.
+     * Safety checks are NOT carried out. Lobs are supported.
+     *
+     * Operation is not atomic, use transactions if necessary.
+     *
+     * @since Moodle 5.2
+     * @param string $table  The database table to be inserted into
+     * @param iterable $dataobjects list of objects to be inserted, must be compatible with foreach
+     * @throws dml_exception A DML specific exception is thrown for any errors.
+     */
+    public function import_records(string $table, iterable $dataobjects): void {
+        // Note: override in driver if there is a faster way.
+        foreach ($dataobjects as $dataobject) {
+            $this->import_record($table, $dataobject);
+        }
+    }
 
     /**
      * Update record in database, as fast as possible, no safety checks, lobs not supported.
