@@ -706,9 +706,7 @@ abstract class testing_util {
 
                 // Use TRUNCATE as a workaround and reinsert everything.
                 $DB->delete_records($table, null);
-                foreach ($records as $record) {
-                    $DB->import_record($table, $record, false, true);
-                }
+                $DB->insert_records($table, $records, true);
                 continue;
             }
 
@@ -746,9 +744,7 @@ abstract class testing_util {
             }
 
             $DB->delete_records($table, array());
-            foreach ($records as $record) {
-                $DB->import_record($table, $record, false, true);
-            }
+            $DB->insert_records($table, $records, true);
         }
 
         // reset all next record ids - aka sequences
