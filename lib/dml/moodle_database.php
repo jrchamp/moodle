@@ -1716,12 +1716,13 @@ abstract class moodle_database {
      *
      * @param string $table  The database table to be inserted into
      * @param array|Traversable $dataobjects list of objects to be inserted, must be compatible with foreach
+     * @param bool $import  Whether or not we are performing a bulk import
      * @return void does not return new record ids
      *
      * @throws coding_exception if data objects have different structure
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
-    public function insert_records($table, $dataobjects) {
+    public function insert_records($table, $dataobjects, $import = false) {
         if (!is_array($dataobjects) and !($dataobjects instanceof Traversable)) {
             throw new coding_exception('insert_records() passed non-traversable object');
         }
