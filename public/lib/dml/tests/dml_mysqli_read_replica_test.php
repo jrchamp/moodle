@@ -90,6 +90,11 @@ final class dml_mysqli_read_replica_test extends \database_driver_testcase {
         $db2 = moodle_database::get_driver_instance($cfg->dbtype, $cfg->dblibrary);
         $db2->connect($cfg->dbhost, $cfg->dbuser, $cfg->dbpass, $cfg->dbname, $cfg->prefix, $cfg->dboptions);
 
+        // Pre-initialize insert_chunk_size so it does not mess up the counts.
+        $rc = new \ReflectionClass(\mysqli_native_moodle_database::class);
+        $rcm = $rc->getMethod('insert_chunk_size');
+        $rcm->invoke($db2, []);
+
         $reads = $db2->perf_get_reads();
         $readsprimary = $reads - $db2->perf_get_reads_replica();
 
@@ -112,15 +117,6 @@ final class dml_mysqli_read_replica_test extends \database_driver_testcase {
         $this->assertEquals($readsprimary, $reads - $db2->perf_get_reads_replica());
 
         // Readwrite handle queries.
-
-        if (PHP_INT_SIZE !== 4) {
-            $rc = new \ReflectionClass(\mysqli_native_moodle_database::class);
-            $rcm = $rc->getMethod('insert_chunk_size');
-
-            $rcm->invoke($db2);
-            $this->assertGreaterThan($reads, $reads = $db2->perf_get_reads());
-            $this->assertGreaterThan($readsprimary, $readsprimary = $reads - $db2->perf_get_reads_replica());
-        }
 
         $db2->get_dbengine();
         $this->assertGreaterThan($reads, $reads = $db2->perf_get_reads());

@@ -72,6 +72,9 @@ class pgsql_native_moodle_database extends moodle_database {
     /** @var int Default number of rows to fetch at a time when using recordsets with cursors */
     const DEFAULT_FETCH_BUFFER_SIZE = 100000;
 
+    /** @var int Maximum number of parameters for a single query. */
+    const QUERY_MAX_PARAMETERS = 65535;
+
     /**
      * Detects if all needed PHP stuff installed.
      * Note: can be used before connect()
@@ -464,7 +467,7 @@ class pgsql_native_moodle_database extends moodle_database {
      */
     public function get_in_or_equal($items, $type=SQL_PARAMS_QM, $prefix='param', $equal=true, $onemptyitems=false): array {
         // We only interfere if number of items in expression exceeds 16 bit value.
-        if (!is_array($items) || count($items) < 65535) {
+        if (!is_array($items) || count($items) < self::QUERY_MAX_PARAMETERS) {
             return parent::get_in_or_equal($items, $type, $prefix,  $equal, $onemptyitems);
         }
 
@@ -1199,6 +1202,38 @@ class pgsql_native_moodle_database extends moodle_database {
     }
 
     /**
+     * Get chunk size for multiple records insert
+     * @param array $columns The destination table's columns.
+     * @return int
+     */
+    private function insert_chunk_size(array $columns): int {
+        $chunklimits = [];
+
+        if (!empty($columns)) {
+            $columncount = count($columns);
+
+            // Set an absolute limit so we do not exceed the maximum number of placeholders.
+            $chunklimits[] = self::QUERY_MAX_PARAMETERS / $columncount;
+        }
+
+        if (!empty($this->dboptions['bulkinsertsize'])) {
+            // Trust that the system administrator has set a reasonable limit.
+            $chunklimits[] = $this->dboptions['bulkinsertsize'];
+        } else {
+            // PostgreSQL does not seem to have problems with huge queries.
+            $chunklimits[] = 500;
+        }
+
+        $chunksize = (int) min($chunklimits);
+
+        if ($chunksize < 1) {
+            $chunksize = 1;
+        }
+
+        return $chunksize;
+    }
+
+    /**
      * Insert multiple records into database as fast as possible.
      *
      * Order of inserts is maintained, but the operation is not atomic,
@@ -1221,13 +1256,8 @@ class pgsql_native_moodle_database extends moodle_database {
             throw new coding_exception('insert_records() passed non-traversable object');
         }
 
-        // PostgreSQL does not seem to have problems with huge queries.
-        $chunksize = 500;
-        if (!empty($this->dboptions['bulkinsertsize'])) {
-            $chunksize = (int)$this->dboptions['bulkinsertsize'];
-        }
-
         $columns = $this->get_columns($table, true);
+        $chunksize = $this->insert_chunk_size($columns);
 
         $fields = null;
         $count = 0;
@@ -1317,6 +1347,84 @@ class pgsql_native_moodle_database extends moodle_database {
         }
 
         return $this->insert_record_raw($table, $cleaned, false, true, true);
+    }
+
+    /**
+     * Import multiple records into database as fast as possible, id field is required.
+     * Safety checks are NOT carried out. Lobs are supported.
+     *
+     * Operation is not atomic, use transactions if necessary.
+     *
+     * @since Moodle 5.2
+     *
+     * @param string $table  The database table to be inserted into
+     * @param iterable $dataobjects list of objects to be inserted, must be compatible with foreach
+     * @throws dml_exception A DML specific exception is thrown for any errors.
+     */
+    public function import_records(string $table, iterable $dataobjects): void {
+        $columns = $this->get_columns($table, true);
+        $chunksize = $this->insert_chunk_size($columns);
+
+        $count = 0;
+        $chunk = [];
+        foreach ($dataobjects as $dataobject) {
+            $chunk[] = (array) $dataobject;
+            $count++;
+
+            if ($count === $chunksize) {
+                $this->import_chunk($table, $chunk, $columns);
+                $chunk = [];
+                $count = 0;
+            }
+        }
+
+        if ($count) {
+            $this->import_chunk($table, $chunk, $columns);
+        }
+    }
+
+    /**
+     * Import records in chunks, no param types...
+     *
+     * Note: can be used only from import_records().
+     *
+     * @param string $table
+     * @param array $chunk
+     * @param database_column_info[] $columns
+     */
+    protected function import_chunk(string $table, array $chunk, array $columns): void {
+        $i = 1;
+        $params = [];
+        $values = [];
+
+        foreach ($chunk as $dataobject) {
+            if (!isset($dataobject['id'])) {
+                throw new coding_exception('moodle_database::import_records() id field must be provided.');
+            }
+
+            $vals = [];
+            foreach ($columns as $field => $column) {
+                if (isset($dataobject[$field])) {
+                    $params[] = $this->normalise_value($column, $dataobject[$field]);
+                } else if ($column->has_default && !array_key_exists($field, $dataobject)) {
+                    $params[] = $column->default_value;
+                } else {
+                    $params[] = null;
+                }
+                $vals[] = "\$" . $i;
+                $i++;
+            }
+            $values[] = '(' . implode(',', $vals) . ')';
+        }
+
+        $fieldssql = '(' . implode(',', array_keys($columns)) . ')';
+        $valuessql = implode(',', $values);
+
+        $sql = "INSERT INTO {$this->prefix}$table $fieldssql VALUES $valuessql";
+        $this->query_start($sql, $params, SQL_QUERY_INSERT);
+        $result = pg_query_params($this->pgsql, $sql, $params);
+        $this->query_end($result);
+        pg_free_result($result);
     }
 
     /**
