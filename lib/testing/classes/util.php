@@ -706,9 +706,11 @@ abstract class testing_util {
 
                 // Use TRUNCATE as a workaround and reinsert everything.
                 $DB->delete_records($table, null);
+                $transaction = $DB->start_delegated_transaction();
                 foreach ($records as $record) {
-                    $DB->import_record($table, $record, false, true);
+                    $DB->import_record($table, $record);
                 }
+                $transaction->allow_commit();
                 continue;
             }
 
@@ -746,9 +748,11 @@ abstract class testing_util {
             }
 
             $DB->delete_records($table, array());
+            $transaction = $DB->start_delegated_transaction();
             foreach ($records as $record) {
-                $DB->import_record($table, $record, false, true);
+                $DB->import_record($table, $record);
             }
+            $transaction->allow_commit();
         }
 
         // reset all next record ids - aka sequences
