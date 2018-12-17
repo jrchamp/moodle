@@ -510,10 +510,9 @@ abstract class testing_util {
                     // incorrect table match caused by _
                     continue;
                 }
-                if (!is_null($info->auto_increment)) {
-                    $table = preg_replace('/^'.preg_quote($prefix, '/').'/', '', $table);
-                    $sequences[$table] = $info->auto_increment;
-                }
+
+                $table = preg_replace('/^'.preg_quote($prefix, '/').'/', '', $table);
+                $sequences[$table] = $info->auto_increment ?? 1;
             }
             $rs->close();
             $prefix = $DB->get_prefix();
@@ -671,10 +670,9 @@ abstract class testing_util {
                     // Incorrect table match caused by _ char.
                     continue;
                 }
-                if (!is_null($info->auto_increment)) {
-                    $table = preg_replace('/^'.preg_quote($prefix, '/').'/', '', $table);
-                    $mysqlsequences[$table] = $info->auto_increment;
-                }
+
+                $table = preg_replace('/^'.preg_quote($prefix, '/').'/', '', $table);
+                $mysqlsequences[$table] = $info->auto_increment ?? 1;
             }
             $rs->close();
         }
