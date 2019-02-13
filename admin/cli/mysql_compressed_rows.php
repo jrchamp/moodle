@@ -38,8 +38,8 @@ if ($engine !== 'innodb' and $engine !== 'xtradb') {
 }
 
 list($options, $unrecognized) = cli_get_params(
-    array('help' => false, 'info' => false, 'list' => false, 'fix' => false, 'showsql' => false),
-    array('h' => 'help', 'i' => 'info', 'l' => 'list', 'f' => 'fix', 's' => 'showsql')
+    array('help' => false, 'info' => false, 'list' => false, 'fix' => false, 'showsql' => false, 'all' => false),
+    array('h' => 'help', 'i' => 'info', 'l' => 'list', 'f' => 'fix', 's' => 'showsql', 'a' => 'all')
 );
 
 if ($unrecognized) {
@@ -58,8 +58,9 @@ overflow problems.
 Options:
 -i, --info            Show database information
 -l, --list            List problematic tables
--f, --fix             Attempt to fix all tables (requires SUPER privilege)
+-f, --fix             Attempt to fix tables (may require SYSTEM_VARIABLES_ADMIN or the deprecated SUPER privilege)
 -s, --showsql         Print SQL statements for fixing of tables
+-a, --all             Include all tables (used with -l, -f or -s)
 -h, --help            Print out this help
 
 Example:
@@ -77,6 +78,12 @@ $fileformat = $fileformat ? $fileformat->value : '';
 $prefix = $DB->get_prefix();
 $database = $CFG->dbname;
 
+$defaultrowformatsql = $DB->get_row_format_sql($engine, $DB->get_dbcollation());
+$defaultrowformat = 'Dynamic';
+if ($defaultrowformatsql === 'ROW_FORMAT=Compressed') {
+    $defaultrowformat = 'Compressed';
+}
+
 if (!empty($options['info'])) {
     echo "Database version:      " . $info['description'] . "\n";
     echo "Database name:         $database\n";
@@ -89,13 +96,15 @@ if (!empty($options['info'])) {
 } else if (!empty($options['list'])) {
     $problem = false;
     foreach ($DB->get_tables(false) as $table) {
-        $columns = $DB->get_columns($table, false);
-        $size = $generator->guess_antelope_row_size($columns);
-        $format = $DB->get_row_format($table);
-        if ($size <= $generator::ANTELOPE_MAX_ROW_SIZE) {
-            continue;
+        if (empty($options['all'])) {
+            $columns = $DB->get_columns($table, false);
+            $size = $generator->guess_antelope_row_size($columns);
+            if ($size <= $generator::ANTELOPE_MAX_ROW_SIZE) {
+                continue;
+            }
         }
 
+        $format = $DB->get_row_format($table);
         echo str_pad($prefix . $table, 32, ' ', STR_PAD_RIGHT);
         echo str_pad($format, 11, ' ', STR_PAD_RIGHT);
 
@@ -119,13 +128,16 @@ if (!empty($options['info'])) {
 } else if (!empty($options['fix'])) {
     $fixtables = array();
     foreach ($DB->get_tables(false) as $table) {
-        $columns = $DB->get_columns($table, false);
-        $size = $generator->guess_antelope_row_size($columns);
-        $format = $DB->get_row_format($table);
-        if ($size <= $generator::ANTELOPE_MAX_ROW_SIZE) {
-            continue;
+        if (empty($options['all'])) {
+            $columns = $DB->get_columns($table, false);
+            $size = $generator->guess_antelope_row_size($columns);
+            if ($size <= $generator::ANTELOPE_MAX_ROW_SIZE) {
+                continue;
+            }
         }
-        if ($format === 'Compact' or $format === 'Redundant') {
+
+        $format = $DB->get_row_format($table);
+        if ($format !== $defaultrowformat && $format !== 'Compressed') {
             $fixtables[$table] = $table;
         }
     }
@@ -168,13 +180,16 @@ if (!empty($options['info'])) {
     $fixtables = array();
 
     foreach ($DB->get_tables(false) as $table) {
-        $columns = $DB->get_columns($table, false);
-        $size = $generator->guess_antelope_row_size($columns);
-        $format = $DB->get_row_format($table);
-        if ($size <= $generator::ANTELOPE_MAX_ROW_SIZE) {
-            continue;
+        if (empty($options['all'])) {
+            $columns = $DB->get_columns($table, false);
+            $size = $generator->guess_antelope_row_size($columns);
+            if ($size <= $generator::ANTELOPE_MAX_ROW_SIZE) {
+                continue;
+            }
         }
-        if ($format === 'Compact' or $format === 'Redundant') {
+
+        $format = $DB->get_row_format($table);
+        if ($format !== $defaultrowformat && $format !== 'Compressed') {
             $fixtables[$table] = $table;
         }
     }
