@@ -914,15 +914,24 @@ function grade_format_gradevalue_letter(?float $value, $grade_item) {
     $value = grade_grade::standardise_score($value, $grade_item->grademin, $grade_item->grademax, 0, 100);
     $value = bounded_number(0, $value, 100); // just in case
 
+    $gradebookfrozendate = null;
     $gradebookcalculationsfreeze = 'gradebook_calculations_freeze_' . $grade_item->courseid;
+    if (property_exists($CFG, $gradebookcalculationsfreeze)) {
+        $gradebookfrozendate = (int) $CFG->{$gradebookcalculationsfreeze};
+    }
+
+    if (empty($gradebookfrozendate) || $gradebookfrozendate > 20260708) {
+        // Float values are not infinitely precise, so PHP's epsilon value must be added.
+        // We must multiply PHP's epsilon value by 'targetmax' (100) to match the exaggerated loss of precision.
+        $value += 100 * PHP_FLOAT_EPSILON;
+    }
 
     foreach ($letters as $boundary => $letter) {
-        if (property_exists($CFG, $gradebookcalculationsfreeze) && (int)$CFG->{$gradebookcalculationsfreeze} <= 20160518) {
-            // Do nothing.
-        } else {
+        if (empty($gradebookfrozendate) || $gradebookfrozendate > 20160518) {
             // The boundary is a percentage out of 100 so use 0 as the min and 100 as the max.
             $boundary = grade_grade::standardise_score($boundary, 0, 100, 0, 100);
         }
+
         if ($value >= $boundary) {
             return format_string($letter);
         }
