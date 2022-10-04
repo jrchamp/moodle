@@ -48,6 +48,7 @@ $file = '/' . min_clean_param($file, 'SAFEPATH');
 // When running a lazy load, we only deal with one file so we can just return the working sourcemap.
 $jsfiles = core_requirejs::find_one_amd_module($component, $module);
 $jsfile = reset($jsfiles);
+$shortfilename = str_replace($CFG->dirroot, '', $jsfile);
 
 $mapfile = $jsfile . '.map';
 
@@ -55,7 +56,6 @@ if (file_exists($mapfile)) {
     $mapdata = file_get_contents($mapfile);
     $mapdata = json_decode($mapdata, true);
 
-    $shortfilename = str_replace($CFG->dirroot, '', $jsfile);
     $srcfilename = str_replace('/amd/build/', '/amd/src/', $shortfilename);
     $srcfilename = str_replace('.min.js', '.js', $srcfilename);
     $fullsrcfilename = $CFG->wwwroot . $srcfilename;
@@ -65,4 +65,5 @@ if (file_exists($mapfile)) {
 } else {
     // If there is no source map file, then we will not generate one for you, sorry.
     header('HTTP/1.0 404 not found');
+    die("Map file not found for {$shortfilename}");
 }
