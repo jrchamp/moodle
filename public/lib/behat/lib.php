@@ -219,7 +219,7 @@ function behat_clean_init_config() {
         'dboptions', 'proxyhost', 'proxyport', 'proxytype', 'proxyuser', 'proxypassword',
         'proxybypass', 'pathtogs', 'pathtophp', 'pathtodu', 'aspellpath', 'pathtodot', 'skiplangupgrade',
         'altcacheconfigpath', 'pathtounoconv', 'alternative_file_system_class', 'pathtopython',
-        'routerconfigured',
+        'routerconfigured', 'productionsourcemaps',
     ));
 
     // Add extra allowed settings.

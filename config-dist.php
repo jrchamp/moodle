@@ -339,6 +339,11 @@ $CFG->admin = 'admin';
 // Please note: It is *not* possible to use X-Sendfile with the per-request directory.
 // The directory is highly likely to have been deleted by the time the web server sends the file.
 //
+// Whether to serve JavaScript sourcemaps to browsers in production mode.
+// This is useful for debugging JavaScript code in production environments.
+// By default this is disabled.
+//     $CFG->productionsourcemaps = false;
+//
 // YUI caching may be sometimes improved by slasharguments:
 //     $CFG->yuislasharguments = 1;
 // Some servers may need a special rewrite rule to work around internal path length limitations:

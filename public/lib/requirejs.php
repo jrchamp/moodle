@@ -153,8 +153,16 @@ if ($rev > 0 && $rev < (time() + 60 * 60)) {
                 $content = $js . $content;
                 continue;
             }
-            // Remove source map link.
-            $js = preg_replace('~//# sourceMappingURL.*$~s', '', $js);
+            // Remove or replace the source map link depending on production sourcemaps config.
+            if ($lazyload && !empty($CFG->productionsourcemaps)) {
+                $js = preg_replace(
+                    '~//# sourceMappingURL.*$~s',
+                    "//# sourceMappingURL={$CFG->wwwroot}/lib/jssourcemap.php{$file}",
+                    $js
+                );
+            } else {
+                $js = preg_replace('~//# sourceMappingURL.*$~s', '', $js);
+            }
             $js = rtrim($js);
             $js .= "\n";
 
