@@ -54,40 +54,18 @@ $jsfiles = [];
 [$unused, $component, $module] = explode('/', $file, 3);
 
 /**
- * Helper function to fix missing module names in JavaScript.
+ * Validate that JS content contains a define() call, logging a developer warning if not.
  *
- * TODO Remove this function when we find a reliable way to do this in the Grunt task.
- * @param string $modulename
- * @param string $js
- * @return string The modified JavaScript.
+ * @param string $modulename The module name for the error message
+ * @param string $js The JavaScript content to validate
  */
-function requirejs_fix_define(string $modulename, string $js): string {
-    // First check whether there is a possible missing module name. That is:
-    // define (function(Foo) {
-    // instead of:
-    // define('mod_foo/bar', function(Foo) {
-    $missingmodule = preg_match('/define\(\s*(\[|function)/', $js);
-
-    // Now check whether the module name is already defined elsewhere.
-    // This could be a totally unrelated use of the word define.
-    // Note: This code needs to die, in a fire. It is evil and wrong.
-    $missingmodule = $missingmodule && !preg_match("@define\s*\(\s*['\"]{$modulename}['\"]@", $js);
-
-    if ($missingmodule) {
-        // If the JavaScript module has been defined without specifying a name then we'll
-        // add the Moodle module name now.
-        $replace = 'define(\'' . $modulename . '\', ';
-
-        // Replace only the first occurrence.
-        return implode($replace, explode('define(', $js, 2));
-    } else if (!preg_match('/define\s*\(/', $js)) {
-        echo(
-            "// JS module '{$modulename}' cannot be loaded, or does not contain a javascript" .
-            ' module in AMD format. "define()" not found.' . "\n"
+function requirejs_validate_define(string $modulename, string $js): void {
+    if (!preg_match('/define\s*\(/', $js)) {
+        debugging(
+            "JS file {$modulename} cannot be loaded, or does not contain a JavaScript module in AMD format. define() not found",
+            DEBUG_DEVELOPER
         );
     }
-
-    return $js;
 }
 
 $legacyprotocols = [
@@ -166,7 +144,7 @@ if ($rev > 0 && $rev < (time() + 60 * 60)) {
             $js = rtrim($js);
             $js .= "\n";
 
-            $js = requirejs_fix_define($modulename, $js);
+            requirejs_validate_define($modulename, $js);
 
             $content .= $js;
         }
@@ -212,7 +190,7 @@ if (!empty($jsfiles)) {
         $js = rtrim($js);
     }
 
-    $js = requirejs_fix_define($modulename, $js);
+    requirejs_validate_define($modulename, $js);
 
     js_send_uncached($js, 'requirejs.php');
 } else {
