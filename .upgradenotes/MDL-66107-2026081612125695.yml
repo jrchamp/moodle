@@ -1,0 +1,14 @@
+issueNumber: MDL-66107
+notes:
+  core:
+    - message: >-
+        Support for legacy AMD modules (pre-3.8) has been removed. Previously,
+        JavaScript modules which did not specify their own module name were
+        automatically rewritten at runtime to include the Moodle module name.
+        This automatic fix has now been removed. Third-party AMD modules which
+        do not specify their own module name will no longer be automatically
+        fixed and will fail to load. Plugin developers should compile their
+        modules with a current version of Moodle (or Grunt) which adds the
+        module name to the build. For Moodle 3.9 and later, module names are
+        replaced at runtime where required by MDL-71882.
+      type: removed
