@@ -14,11 +14,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * This is an empty module, that is required before all other modules.
- * Because every module is returned from a request for any other module, this
- * forces the loading of all modules with a single request.
- *
- * This function also sets up the listeners for ajax requests so we can tell
+ * This module sets up listeners for ajax requests so Behat can tell
  * if any requests are still in progress.
  *
  * @module     core/first
