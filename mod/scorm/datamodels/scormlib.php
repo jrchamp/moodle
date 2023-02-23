@@ -73,8 +73,10 @@ function scorm_get_manifest($blocks, $scoes) {
                     $manifest = $block['attrs']['IDENTIFIER'];
                     $organization = '';
                     $resources = array();
-                    $resources = scorm_get_resources($block['children']);
-                    $scoes = scorm_get_manifest($block['children'], $scoes);
+                    if (isset($block['children'])) {
+                        $resources = scorm_get_resources($block['children']);
+                        $scoes = scorm_get_manifest($block['children'], $scoes);
+                    }
                     if (empty($scoes->elements) || count($scoes->elements) <= 0) {
                         foreach ($resources as $item => $resource) {
                             if (!empty($resource['HREF'])) {

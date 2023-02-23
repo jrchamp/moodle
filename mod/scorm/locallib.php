@@ -1541,9 +1541,9 @@ function scorm_get_toc_object($user, $scorm, $currentorg='', $scoid='', $mode='n
         $result[0]->url = '';
     }
 
+    $usertracks = array();
     if ($scoes = scorm_get_scoes($scorm->id, $currentorg)) {
         // Retrieve user tracking data for each learning object.
-        $usertracks = array();
         foreach ($scoes as $sco) {
             if (!empty($sco->launch)) {
                 if ($usertrack = scorm_get_tracks($sco->id, $user->id, $attempt)) {
@@ -1698,6 +1698,10 @@ function scorm_get_toc_get_parent_child(&$result, $currentorg) {
                 }
             }
         }
+    }
+
+    if (empty($final)) {
+        return array();
     }
 
     for ($i = 0; $i <= $level; $i++) {
@@ -1939,7 +1943,8 @@ function scorm_get_toc($user, $scorm, $cmid, $toclink=TOCJSLINK, $currentorg='',
 
     $scoes = scorm_get_toc_object($user, $scorm, $currentorg, $scoid, $mode, $attempt, $play, $organizationsco);
 
-    $treeview = scorm_format_toc_for_treeview($user, $scorm, $scoes['scoes'][0]->children, $scoes['usertracks'], $cmid,
+    $children = $scoes['scoes'][0]->children ?? [];
+    $treeview = scorm_format_toc_for_treeview($user, $scorm, $children, $scoes['usertracks'], $cmid,
                                                 $toclink, $currentorg, $attempt, $play, $organizationsco, false);
 
     if ($tocheader) {
