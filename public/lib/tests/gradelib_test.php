@@ -411,4 +411,35 @@ final class gradelib_test extends \advanced_testcase {
         $grades2 = grade_get_grades($course->id, 'mod', 'quiz', $quiz->id);
         $this->assertEmpty($grades2->errors);
     }
+
+    /**
+     * For users to receive the correct letter grades, the standardised score must be greater than or equal to the boundary.
+     *
+     * @covers \grade_format_gradevalue_letter()
+     * @return void
+     */
+    public function test_grade_format_gradevalue_letter(): void {
+        $letters = \grade_get_letters(null);
+
+        for ($grademax = 1; $grademax <= 1000; $grademax++) {
+            $gradeitem = new \grade_item(
+                [
+                    'courseid' => 0,
+                    'grademin' => 0,
+                    'grademax' => $grademax,
+                ],
+                false
+            );
+
+            foreach ($letters as $boundary => $letter) {
+                // Determine the equivalent score at the boundary for the given max grade.
+                $value = (string) ($grademax * $boundary / 100);
+
+                $expected = $letter;
+                $actual = \grade_format_gradevalue_letter((float) $value, $gradeitem);
+
+                $this->assertEquals($expected, $actual);
+            }
+        }
+    }
 }
