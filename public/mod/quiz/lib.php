@@ -743,7 +743,7 @@ function quiz_grade_item_update($quiz, $grades = null) {
             // NOTE: this is an extremely nasty hack! It is not a bug if this confirmation fails badly. --skodak.
             $confirm_regrade = optional_param('confirm_regrade', 0, PARAM_INT);
             if (!$confirm_regrade) {
-                if (!AJAX_SCRIPT) {
+                if (!WS_SERVER && !AJAX_SCRIPT && !CLI_SCRIPT) {
                     $message = get_string('gradeitemislocked', 'grades');
                     $back_link = $CFG->wwwroot . '/mod/quiz/report.php?q=' . $quiz->id .
                             '&amp;mode=overview';
