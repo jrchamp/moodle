@@ -749,6 +749,7 @@ abstract class testing_util {
             foreach ($records as $record) {
                 $DB->import_record($table, $record, false, true);
             }
+            //
         }
 
         // reset all next record ids - aka sequences
