@@ -638,6 +638,12 @@ class mysqli_native_moodle_database extends moodle_database {
             $result = $this->mysqli->query($sql);
         }
 
+        // Turn off InnoDB redo logs during tests.
+        if (PHPUNIT_TEST && version_compare($si['version'], '8.0.21', '>=')) {
+            $sql = "ALTER INSTANCE DISABLE INNODB REDO_LOG";
+            $result = $this->mysqli->query($sql);
+        }
+
         // We can enable logging now.
         $this->query_log_allow();
 
