@@ -58,8 +58,8 @@ $CFG->pathtophp = getenv('pathtophp');
 $CFG->phpunit_dataroot  = realpath(dirname(__DIR__)) . '/phpunitdata';
 $CFG->phpunit_prefix = 't_';
 
-define('TEST_EXTERNAL_FILES_HTTP_URL', 'http://localhost:8080');
-define('TEST_EXTERNAL_FILES_HTTPS_URL', 'http://localhost:8080');
+//define('TEST_EXTERNAL_FILES_HTTP_URL', 'http://localhost:8080');
+//define('TEST_EXTERNAL_FILES_HTTPS_URL', 'http://localhost:8080');
 
 define('TEST_SESSION_REDIS_HOST', 'localhost');
 define('TEST_CACHESTORE_REDIS_TESTSERVERS', 'localhost');
