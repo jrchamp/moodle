@@ -305,7 +305,7 @@ class filelib_test extends \advanced_testcase {
     public function test_curl_redirects() {
         global $CFG;
 
-        $testurl = $this->getExternalTestFileUrl('/test_redir.php');
+        $testurl = $this->getExternalTestFileUrl('/test_redir.php', true);
 
         $curl = new \curl();
         $contents = $curl->get("$testurl?redir=2", array(), array('CURLOPT_MAXREDIRS'=>2));
@@ -421,7 +421,7 @@ class filelib_test extends \advanced_testcase {
 
     public function test_curl_relative_redirects() {
         // Test relative location redirects.
-        $testurl = $this->getExternalTestFileUrl('/test_relative_redir.php');
+        $testurl = $this->getExternalTestFileUrl('/test_relative_redir.php', true);
 
         $curl = new \curl();
         $contents = $curl->get($testurl);
@@ -429,9 +429,6 @@ class filelib_test extends \advanced_testcase {
         $this->assertSame(1, $curl->info['redirect_count']);
         $this->assertSame(200, $curl->info['http_code']);
         $this->assertSame('done', $contents);
-
-        // Test different redirect types.
-        $testurl = $this->getExternalTestFileUrl('/test_relative_redir.php');
 
         $curl = new \curl();
         $contents = $curl->get("$testurl?type=301");
