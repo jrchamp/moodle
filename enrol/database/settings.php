@@ -51,6 +51,16 @@ if ($ADMIN->fulltree) {
 
     $settings->add(new admin_setting_configcheckbox('enrol_database/debugdb', get_string('debugdb', 'enrol_database'), get_string('debugdb_desc', 'enrol_database'), 0));
 
+    $settings->add(
+        new admin_setting_configcheckbox(
+            'enrol_database/ssl',
+            get_string('ssl', 'enrol_database'),
+            get_string('ssl_desc', 'enrol_database'),
+            'no',
+            'yes',
+            'no'
+        )
+    );
 
 
     $settings->add(new admin_setting_heading('enrol_database_localheader', get_string('settingsheaderlocal', 'enrol_database'), ''));
