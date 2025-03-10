@@ -926,6 +926,10 @@ class enrol_database_plugin extends enrol_plugin {
 
         // The dbtype my contain the new connection URL, so make sure we are not connected yet.
         if (!$extdb->IsConnected()) {
+            if ($this->get_config('dbtype') === 'mysqli' && $this->get_config('ssl') === 'yes') {
+                $extdb->ssl_cipher = 'HIGH:MEDIUM';
+            }
+
             $result = $extdb->Connect($this->get_config('dbhost'), $this->get_config('dbuser'), $this->get_config('dbpass'), $this->get_config('dbname'), true);
             if (!$result) {
                 return null;
