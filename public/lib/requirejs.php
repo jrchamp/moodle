@@ -43,14 +43,15 @@ if (substr_count($slashargument, '/') < 1) {
     header('HTTP/1.0 404 not found');
     die('Slash argument must contain both a revision and a file path');
 }
+
 // Split into revision and module name.
-list($rev, $file) = explode('/', $slashargument, 2);
-$rev  = min_clean_param($rev, 'INT');
+[$rev, $file] = explode('/', $slashargument, 2);
+$rev = min_clean_param($rev, 'INT');
 $file = '/' . min_clean_param($file, 'SAFEPATH');
 
 // Only load js files from the js modules folder from the components.
-$jsfiles = array();
-list($unused, $component, $module) = explode('/', $file, 3);
+$jsfiles = [];
+[$unused, $component, $module] = explode('/', $file, 3);
 
 /**
  * Helper function to fix missing module names in JavaScript.
@@ -89,13 +90,23 @@ function requirejs_fix_define(string $modulename, string $js): string {
     return $js;
 }
 
+$legacyprotocols = [
+    'HTTP/1.0' => true,
+    'HTTP/1.1' => true,
+];
+
+$lazyload = true;
+if (empty($_SERVER['SERVER_PROTOCOL']) || isset($legacyprotocols[$_SERVER['SERVER_PROTOCOL']])) {
+    $lazyload = false;
+}
+
 // Use the caching only for meaningful revision numbers which prevents future cache poisoning.
-if ($rev > 0 and $rev < (time() + 60 * 60)) {
+if ($rev > 0 && $rev < (time() + 60 * 60)) {
     // This is "production mode".
     // Some (huge) modules are better loaded lazily (when they are used). If we are requesting
     // one of these modules, only return the one module, not the combo.
     $lazysuffix = "-lazy.js";
-    $lazyload = (strpos($module, $lazysuffix) !== false);
+    $lazyload = $lazyload || (strpos($module, $lazysuffix) !== false);
 
     if ($lazyload) {
         // We are lazy loading a single file - so include the component/filename pair in the etag.
@@ -105,7 +116,7 @@ if ($rev > 0 and $rev < (time() + 60 * 60)) {
         $etag = sha1($rev);
     }
 
-    $candidate = $CFG->localcachedir . '/requirejs/' . $etag;
+    $candidate = "{$CFG->localcachedir}/requirejs/{$etag}";
 
     if (file_exists($candidate)) {
         if (!empty($_SERVER['HTTP_IF_NONE_MATCH']) || !empty($_SERVER['HTTP_IF_MODIFIED_SINCE'])) {
@@ -120,6 +131,12 @@ if ($rev > 0 and $rev < (time() + 60 * 60)) {
         $jsfiles = array();
         if ($lazyload) {
             $jsfiles = core_requirejs::find_one_amd_module($component, $module);
+
+            if (empty($jsfiles)) {
+                // We can't find the requested file, so do not cache or serve an empty response.
+                header('HTTP/1.0 404 not found');
+                die("JS file not found for {$component}/{$module}");
+            }
         } else {
             // Here we respond to the request by returning ALL amd modules. This saves
             // round trips in production.
@@ -193,4 +210,5 @@ if (!empty($jsfiles)) {
 } else {
     // We can't find the requested file.
     header('HTTP/1.0 404 not found');
+    die("JS file not found for {$component}/{$module}");
 }
