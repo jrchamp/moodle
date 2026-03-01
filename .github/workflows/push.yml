@@ -56,14 +56,6 @@ jobs:
         image: redis
         ports:
           - 6379:6379
-      postgres:
-        image: ${{ matrix.db == 'pgsql' && 'postgres:16' || '' }}
-        env:
-          POSTGRES_DB: test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        ports:
-          - 5432:5432
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +71,21 @@ jobs:
             db: pgsql
 
     steps:
+      - name: Run PostgreSQL Server
+        if: ${{ matrix.db == 'pgsql' }}
+        run: |
+          docker run --rm \
+            -e POSTGRES_DB=test \
+            -e POSTGRES_USER=test \
+            -e POSTGRES_PASSWORD=test \
+            -p 5432:5432 \
+            -d \
+            --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=1024M \
+            postgres:16 \
+              -c fsync=off \
+              -c synchronous_commit=off \
+              -c full_page_writes=off
+
       - name: Run MySQL Server
         if: ${{ matrix.db == 'mysqli' }}
         run: |
@@ -92,6 +99,9 @@ jobs:
             --tmpfs /var/lib/mysql:rw,noexec,nosuid,size=1024M \
             mysql:8.4 \
               --skip-log-bin \
+              --innodb-flush-log-at-trx-commit=0 \
+              --innodb-doublewrite=0 \
+              --sync-binlog=0 \
               --collation-server=utf8mb4_bin
 
       - name: Configuring git vars
@@ -107,6 +117,11 @@ jobs:
 
       - name: Checking out code from ${{ env.GITHUB_REF_SLUG }}
         uses: actions/checkout@v4
+
+      - name: Turn off MySQL Server Redo Log
+        if: ${{ matrix.db == 'mysqli' }}
+        run: |
+          mysql -h 127.0.0.1 -u root -ptest -e "ALTER INSTANCE DISABLE INNODB REDO_LOG;"
 
       - name: Setting up PHPUnit
         env:
