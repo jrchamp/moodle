@@ -112,7 +112,12 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: ${{ matrix.extensions }}
-          ini-values: max_input_vars=5000
+          ini-values: |
+            max_input_vars=5000
+            opcache.enable_cli=1
+            opcache.jit=tracing
+            opcache.jit_buffer_size=100M
+            opcache.memory_consumption=256
           coverage: none
 
       - name: Checking out code from ${{ env.GITHUB_REF_SLUG }}
@@ -130,6 +135,7 @@ jobs:
           echo "pathtophp=$(which php)" >> $GITHUB_ENV # Inject installed pathtophp to env. The template config needs it.
           cp .github/workflows/config-template.php config.php
           mkdir ../moodledata
+          sudo mount -t tmpfs -o size=1G tmpfs ../moodledata
           sudo locale-gen en_AU.UTF-8
           php public/admin/tool/phpunit/cli/init.php --no-composer-self-update
 
