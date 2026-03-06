@@ -1507,7 +1507,7 @@ class mysqli_native_moodle_database extends moodle_database {
 
         $chunklimits = [];
 
-        // Hopefully 200kb per object is enough.
+        // Historically, 200kb per object was enough.
         $recordsize = 200000;
 
         if (!empty($columns)) {
@@ -1515,6 +1515,39 @@ class mysqli_native_moodle_database extends moodle_database {
 
             // Set an absolute limit so we do not exceed the maximum number of placeholders.
             $chunklimits[] = self::QUERY_MAX_PARAMETERS / $columncount;
+
+            $fixedsizes = [
+                'tinyblob' => 2 ** 8,
+                'tinytext' => 2 ** 8,
+                'blob' => 2 ** 16,
+                'text' => 2 ** 16,
+                'mediumblob' => 2 ** 24,
+                'mediumtext' => 2 ** 24,
+                'longblob' => 200000, // Hopefully 200kb per longblob is enough.
+                'longtext' => 200000, // Hopefully 200kb per longtext is enough.
+            ];
+            $stringtypes = [
+                'char' => true,
+                'enum' => true,
+                'varchar' => true,
+            ];
+
+            // Calculate a record size estimate using the real columns.
+            $recordsize = 0;
+            foreach ($columns as $column) {
+                if (isset($fixedsizes[$column->type])) {
+                    $recordsize += $fixedsizes[$column->type];
+                } else if (isset($stringtypes[$column->type])) {
+                    // The utf8mb4 character set uses up to 4 bytes per character.
+                    $recordsize += $column->max_length * 4;
+                } else if ($column->max_length > 0) {
+                    $recordsize += $column->max_length;
+                }
+            }
+
+            // Add some overhead from formatting characters.
+            $recordoverhead = $columncount * 5;
+            $recordsize += $recordoverhead;
         }
 
         if ($maxallowedpacket === null) {
