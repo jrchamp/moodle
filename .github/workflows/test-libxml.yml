@@ -43,24 +43,12 @@ jobs:
         run: |
           cd $HOME
           git clone --depth 1 --branch PHP-$(php -r "echo PHP_VERSION;") https://github.com/php/php-src.git
-          cd $HOME/php-src/ext/libxml
-          phpize
-          ./configure --with-libxml --with-libxml-dir=$CUSTOM_LIBXML_PATH
-          make -j$(nproc)
-          sudo make install
-          echo "extension=libxml.so" | sudo tee $(php -i | grep "Scan this dir for additional .ini files" | awk '{print $9}')/10-libxml.ini
           cd $HOME/php-src/ext/dom
           phpize
           ./configure --with-libxml --with-libxml-dir=$CUSTOM_LIBXML_PATH
           make -j$(nproc)
           sudo make install
           echo "extension=dom.so" | sudo tee $(php -i | grep "Scan this dir for additional .ini files" | awk '{print $9}')/20-dom.ini
-          #cd $HOME/php-src/ext/xml
-          #phpize
-          #./configure --with-libxml --with-libxml-dir=$CUSTOM_LIBXML_PATH
-          #make -j$(nproc)
-          #sudo make install
-          #echo "extension=xml.so" | sudo tee $(php -i | grep "Scan this dir for additional .ini files" | awk '{print $9}')/20-xml.ini
 
       - name: Run Test with custom libxml2
         run: |
