@@ -11,8 +11,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        libxml-version: ['2.9.4', '2.12.0', '2.13.0', '2.14.0', '2.14.6', '2.15.0', '2.15.2']
-        php-version: ['8.3', '8.4', '8.5']
+        libxml-version: ['2.9.4', '2.12.0', '2.13.0', '2.13.9', '2.14.0', '2.14.6', '2.15.0', '2.15.2']
+        php-version: ['8.2', '8.3', '8.4', '8.5']
 
     steps:
       - name: Setup PHP
