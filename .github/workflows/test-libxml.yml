@@ -19,7 +19,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
-          extensions: none
+          extensions: dom
 
       - name: Run Test with custom libxml2
         run: |
@@ -60,6 +60,7 @@ jobs:
           phpize
           ./configure
           make -j$(nproc)
+          ls -l $(php -i | grep "Scan this dir for additional .ini files" | awk '{print $9}')
           echo "extension=$HOME/php-src/ext/dom/modules/dom.so" | sudo tee $(php -i | grep "Scan this dir for additional .ini files" | awk '{print $9}')/20-dom.ini
 
       - name: Run Test with custom libxml2
