@@ -11,8 +11,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        libxml-version: ['2.9.4', '2.12.0', '2.13.0', '2.13.9', '2.14.0', '2.14.6', '2.15.0', '2.15.2']
-        php-version: ['8.2', '8.3', '8.4', '8.5']
+        libxml-version: ['2.9.13', '2.12.10', '2.13.9', '2.14.0', '2.14.6', '2.15.0', '2.15.2']
+        php-version: ['8.1', '8.2', '8.3', '8.4', '8.5']
 
     steps:
       - name: Setup PHP
@@ -20,6 +20,17 @@ jobs:
         with:
           php-version: ${{ matrix.php-version }}
           extensions: none
+
+      - name: Run Test with custom libxml2
+        run: |
+          cd $HOME
+          php -r "file_put_contents('test_script.php', base64_decode('PD9waHAKZWNobyAnbGlieG1sIHZlcnNpb246ICcgLiBMSUJYTUxfVkVSU0lPTiAuICJcbiI7CmVjaG8gJ2xpYnhtbCBkb3R0ZWQgdmVyc2lvbjogJyAuIExJQlhNTF9ET1RURURfVkVSU0lPTiAuICJcbiI7CmVjaG8gJ2xpYnhtbCBsb2FkZWQgdmVyc2lvbjogJyAuIExJQlhNTF9MT0FERURfVkVSU0lPTiAuICJcbiI7CgokZG9tZG9jdW1lbnQgPSAnCiAgICAgPCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUcmFuc2l0aW9uYWwvL0VOIiAiaHR0cDovL3d3dy53My5vcmcvVFIvUkVDLWh0bWw0MC9sb29zZS5kdGQiPgogICAgIDxodG1sIGxhbmc9ImVuIj4KICAgICA8aGVhZD4KICAgICA8dGl0bGU+RW1iZWQgdGFncyBtdXN0IGhhdmUgYSBub2VtYmVkIGNoaWxkIHRhZzwvdGl0bGU+CiAgICAgPC9oZWFkPgogICAgIDxib2R5PgogICAgIDxlbWJlZCB0eXBlPSJ0ZXh0L2h0bWwiIHNyYz0ic25pcHBldC5odG1sIiB3aWR0aD0iNTAwIiBoZWlnaHQ9IjIwMCI+CiAgICAgICAgIDxub2VtYmVkPiA8aW1nIHNyYyA9ICJ5b3VyaW1hZ2UuZ2lmIiBhbHQgPSAiQWx0ZXJuYXRpdmUgTWVkaWEiPjwvbm9lbWJlZD4KICAgICA8L2VtYmVkPgogICAgIDwvYm9keT4KICAgICA8L2h0bWw+Cic7CgokZG9jID0gbmV3IERPTURvY3VtZW50KCk7CiRkb2MtPmxvYWRIVE1MKCc8P3htbCBlbmNvZGluZz0idXRmLTgiID8+JyAuICRkb21kb2N1bWVudCk7CmZvcmVhY2ggKCRkb2MtPmdldEVsZW1lbnRzQnlUYWdOYW1lKCdib2R5JykgYXMgJGJvZHkpIHsKCWVjaG8gJGJvZHktPnRhZ05hbWUgLiAiXG4iOwoJZm9yZWFjaCAoJGJvZHktPmNoaWxkTm9kZXMgYXMgJGJvZHljaGlsZCkgewoJCWlmICgkYm9keWNoaWxkIGluc3RhbmNlb2YgRE9NRWxlbWVudCkgewoJCQllY2hvICIgLSAiIC4gJGJvZHljaGlsZC0+dGFnTmFtZSAuICJcbiI7CgoJCQlmb3JlYWNoICgkYm9keWNoaWxkLT5jaGlsZE5vZGVzIGFzICRib2R5Z3JhbmRjaGlsZCkgewoJCQkJaWYgKCRib2R5Z3JhbmRjaGlsZCBpbnN0YW5jZW9mIERPTUVsZW1lbnQpIHsKCQkJCQllY2hvICIgLSAtICIgLiAkYm9keWdyYW5kY2hpbGQtPnRhZ05hbWUgLiAiXG4iOwoJCQkJfQoJCQl9CgkJfQoJfQp9Cg=='));"
+          echo "--- Showing Code ---"
+          cat test_script.php
+          echo ""
+          echo "--- Running Control ---"
+          php test_script.php
+          echo ""
 
       #- name: Cache libxml2 Build
       #  id: cache-libxml
@@ -43,7 +54,7 @@ jobs:
         run: |
           export PKG_CONFIG_PATH="$CUSTOM_LIBXML_PATH/lib/pkgconfig:$PKG_CONFIG_PATH"
           cd $HOME
-          git clone --depth 1 --branch PHP-$(php -r "echo PHP_VERSION;") https://github.com/php/php-src.git
+          git clone --depth 1 --branch php-$(php -r "echo PHP_VERSION;") https://github.com/php/php-src.git
           cd $HOME/php-src/ext/dom
           export CFLAGS="-I${HOME}/php-src -I${HOME}/php-src/ext -I${HOME}/php-src/ext/lexbor"
           phpize
@@ -55,10 +66,7 @@ jobs:
         run: |
           # Point the linker to our custom build
           export LD_LIBRARY_PATH=$CUSTOM_LIBXML_PATH/lib:$LD_LIBRARY_PATH
-          php -r "file_put_contents('test_script.php', base64_decode('PD9waHAKZWNobyAnbGlieG1sIHZlcnNpb246ICcgLiBMSUJYTUxfVkVSU0lPTiAuICJcbiI7CmVjaG8gJ2xpYnhtbCBkb3R0ZWQgdmVyc2lvbjogJyAuIExJQlhNTF9ET1RURURfVkVSU0lPTiAuICJcbiI7CmVjaG8gJ2xpYnhtbCBsb2FkZWQgdmVyc2lvbjogJyAuIExJQlhNTF9MT0FERURfVkVSU0lPTiAuICJcbiI7CgokZG9tZG9jdW1lbnQgPSAnCiAgICAgPCFET0NUWVBFIEhUTUwgUFVCTElDICItLy9XM0MvL0RURCBIVE1MIDQuMCBUcmFuc2l0aW9uYWwvL0VOIiAiaHR0cDovL3d3dy53My5vcmcvVFIvUkVDLWh0bWw0MC9sb29zZS5kdGQiPgogICAgIDxodG1sIGxhbmc9ImVuIj4KICAgICA8aGVhZD4KICAgICA8dGl0bGU+RW1iZWQgdGFncyBtdXN0IGhhdmUgYSBub2VtYmVkIGNoaWxkIHRhZzwvdGl0bGU+CiAgICAgPC9oZWFkPgogICAgIDxib2R5PgogICAgIDxlbWJlZCB0eXBlPSJ0ZXh0L2h0bWwiIHNyYz0ic25pcHBldC5odG1sIiB3aWR0aD0iNTAwIiBoZWlnaHQ9IjIwMCI+CiAgICAgICAgIDxub2VtYmVkPiA8aW1nIHNyYyA9ICJ5b3VyaW1hZ2UuZ2lmIiBhbHQgPSAiQWx0ZXJuYXRpdmUgTWVkaWEiPjwvbm9lbWJlZD4KICAgICA8L2VtYmVkPgogICAgIDwvYm9keT4KICAgICA8L2h0bWw+Cic7CgokZG9jID0gbmV3IERPTURvY3VtZW50KCk7CiRkb2MtPmxvYWRIVE1MKCc8P3htbCBlbmNvZGluZz0idXRmLTgiID8+JyAuICRkb21kb2N1bWVudCk7CmZvcmVhY2ggKCRkb2MtPmdldEVsZW1lbnRzQnlUYWdOYW1lKCdib2R5JykgYXMgJGJvZHkpIHsKCWVjaG8gJGJvZHktPnRhZ05hbWUgLiAiXG4iOwoJZm9yZWFjaCAoJGJvZHktPmNoaWxkTm9kZXMgYXMgJGJvZHljaGlsZCkgewoJCWlmICgkYm9keWNoaWxkIGluc3RhbmNlb2YgRE9NRWxlbWVudCkgewoJCQllY2hvICIgLSAiIC4gJGJvZHljaGlsZC0+dGFnTmFtZSAuICJcbiI7CgoJCQlmb3JlYWNoICgkYm9keWNoaWxkLT5jaGlsZE5vZGVzIGFzICRib2R5Z3JhbmRjaGlsZCkgewoJCQkJaWYgKCRib2R5Z3JhbmRjaGlsZCBpbnN0YW5jZW9mIERPTUVsZW1lbnQpIHsKCQkJCQllY2hvICIgLSAtICIgLiAkYm9keWdyYW5kY2hpbGQtPnRhZ05hbWUgLiAiXG4iOwoJCQkJfQoJCQl9CgkJfQoJfQp9Cg=='));"
-          echo "--- Showing Test ---"
-          cat test_script.php
-          echo ""
+          cd $HOME
           echo "--- Running Test ---"
           php test_script.php
           echo ""
