@@ -45,7 +45,7 @@ jobs:
           cd $HOME
           git clone --depth 1 --branch PHP-$(php -r "echo PHP_VERSION;") https://github.com/php/php-src.git
           cd $HOME/php-src/ext/dom
-          export CFLAGS="-I${HOME}/php-src/ext/lexbor"
+          export CFLAGS="-I${HOME}/php-src -I${HOME}/php-src/ext -I${HOME}/php-src/ext/lexbor"
           phpize
           ./configure
           make -j$(nproc)
