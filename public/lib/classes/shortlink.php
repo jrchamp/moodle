@@ -307,7 +307,7 @@ class shortlink {
                 );
             }
 
-            $unused = array_diff($shortcodes, $existing);
+            $unused = array_udiff($shortcodes, $existing, 'strcasecmp');
             if (count($unused) === 0) {
                 // If we didn't find any unused shortcodes, increase the max length before trying again.
                 $maxlength++;
