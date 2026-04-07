@@ -31,12 +31,15 @@
     }
 }}
 <div class="activity-icon activityiconcontainer smaller {{purpose}} {{#branded}}isbranded{{/branded}} courseicon align-self-start me-2">
-    <img
-        src="{{{icon}}}"
+    <div
+        style="-webkit-mask-image: url({{icon}}); mask-image: url({{icon}});"
         class="activityicon {{iconclass}}"
         data-region="activity-icon"
         data-id="{{cmid}}"
-        alt="{{#showtooltip}}{{#cleanstr}} activityicon, moodle, {{{pluginname}}} {{/cleanstr}}{{/showtooltip}}"
-        {{#showtooltip}}title="{{{pluginname}}}"{{/showtooltip}}
-    >
+        {{#showtooltip}}
+        role="img"
+        aria-label="{{#cleanstr}} activityicon, moodle, {{pluginname}} {{/cleanstr}}"
+        title="{{pluginname}}"
+        {{/showtooltip}}
+    ></div>
 </div>

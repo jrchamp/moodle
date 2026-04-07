@@ -114,19 +114,26 @@ class pix_icon implements externable, renderable, templatable {
             }
         }
 
-        $attributes['src'] = $output->image_url($this->pix, $this->component)->out(false);
+        $data = [
+            'extraclasses' => $extraclasses,
+        ];
+
+        $imageurl = $output->image_url($this->pix, $this->component)->out(false);
+
+        if ($this->pix === 'monologo') {
+            $data['tag'] = 'div';
+            $data['closetag'] = true;
+            $attributes['style'] = "-webkit-mask-image: url($imageurl); mask-image: url($imageurl);";
+        } else {
+            $data['tag'] = 'img';
+            $attributes['src'] = $imageurl;
+        }
+
         $templatecontext = [];
         foreach ($attributes as $name => $value) {
             $templatecontext[] = ['name' => $name, 'value' => $value];
         }
-        $title = isset($attributes['title']) ? $attributes['title'] : '';
-        if (empty($title)) {
-            $title = isset($attributes['alt']) ? $attributes['alt'] : '';
-        }
-        $data = [
-            'attributes' => $templatecontext,
-            'extraclasses' => $extraclasses,
-        ];
+        $data['attributes'] = $templatecontext;
 
         return $data;
     }

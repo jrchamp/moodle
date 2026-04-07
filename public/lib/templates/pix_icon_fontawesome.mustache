@@ -49,5 +49,5 @@
 {{/unmappedIcon}}
 {{#unmappedIcon}}
 {{! We cannot include the pix_icon template directly here because we don't have all the mustache helpers loaded. }}
-<img class="icon {{extraclasses}}" {{#attributes}}{{name}}="{{value}}" {{/attributes}}/>
+<{{tag}} class="icon {{extraclasses}}" {{#attributes}}{{name}}="{{value}}" {{/attributes}}>{{#closetag}}</{{tag}}>{{/closetag}}
 {{/unmappedIcon}}

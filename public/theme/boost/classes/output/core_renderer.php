@@ -202,11 +202,13 @@ class core_renderer extends \core_renderer {
                 $heading = $this->page->cm->get_formatted_name();
                 $iconurl = $this->page->cm->get_icon_url();
                 $iconclass = $iconurl->get_param('filtericon') ? '' : 'nofilter';
+                $maskurl = $iconurl->out(false);
                 $iconattrs = [
                     'class' => "icon activityicon $iconclass",
-                    'aria-hidden' => 'true'
+                    'aria-hidden' => 'true',
+                    'style' => "-webkit-mask-image: url($maskurl); mask-image: url($maskurl);"
                 ];
-                $imagedata = html_writer::img($iconurl->out(false), '', $iconattrs);
+                $imagedata = html_writer::tag('div', '', $iconattrs);
                 $purposeclass = plugin_supports('mod', $this->page->activityname, FEATURE_MOD_PURPOSE);
                 $purposeclass .= ' activityiconcontainer me-2';
                 $purposeclass .= ' modicon_' . $this->page->activityname;

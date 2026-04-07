@@ -28795,36 +28795,39 @@ img.icon {
   height: inherit;
   max-width: inherit;
   max-height: inherit;
+  background-color: currentcolor;
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 
 .activityiconcontainer.administration:not(.isbranded) .activityicon:not(.nofilter),
 .activityiconcontainer.administration:not(.isbranded) .icon:not(.nofilter) {
-  filter: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="recolor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.8549019608 0 0 0 0 0.3450980392 0 0 0 0 0.937254902 0 0 0 1 0 "/></filter></svg>#recolor');
+  color: var(--activityadministration);
 }
 
 .activityiconcontainer.assessment:not(.isbranded) .activityicon:not(.nofilter),
 .activityiconcontainer.assessment:not(.isbranded) .icon:not(.nofilter) {
-  filter: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="recolor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.9764705882 0 0 0 0 0 0 0 0 0 0.5254901961 0 0 0 1 0 "/></filter></svg>#recolor');
+  color: var(--activityassessment);
 }
 
 .activityiconcontainer.collaboration:not(.isbranded) .activityicon:not(.nofilter),
 .activityiconcontainer.collaboration:not(.isbranded) .icon:not(.nofilter) {
-  filter: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="recolor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.3568627451 0 0 0 0 0.2509803922 0 0 0 0 1 0 0 0 1 0 "/></filter></svg>#recolor');
+  color: var(--activitycollaboration);
 }
 
 .activityiconcontainer.communication:not(.isbranded) .activityicon:not(.nofilter),
 .activityiconcontainer.communication:not(.isbranded) .icon:not(.nofilter) {
-  filter: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="recolor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.9215686275 0 0 0 0 0.3843137255 0 0 0 0 0 0 0 0 1 0 "/></filter></svg>#recolor');
+  color: var(--activitycommunication);
 }
 
 .activityiconcontainer.content:not(.isbranded) .activityicon:not(.nofilter),
 .activityiconcontainer.content:not(.isbranded) .icon:not(.nofilter) {
-  filter: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="recolor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0.6 0 0 0 0 0.6784313725 0 0 0 1 0 "/></filter></svg>#recolor');
+  color: var(--activitycontent);
 }
 
 .activityiconcontainer.interactivecontent:not(.isbranded) .activityicon:not(.nofilter),
 .activityiconcontainer.interactivecontent:not(.isbranded) .icon:not(.nofilter) {
-  filter: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><filter id="recolor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 0 0 0.5529411765 0 0 0 0 0.2392156863 0 0 0 0 0.1058823529 0 0 0 1 0 "/></filter></svg>#recolor');
+  color: var(--activityinteractivecontent);
 }
 
 :root {
