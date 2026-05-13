@@ -527,7 +527,6 @@ class processor {
      */
     public function get_room_user_provider(): room_user_provider {
         $this->require_api_enabled();
-        $this->require_room_features();
         $this->require_room_user_features();
         return $this->provider;
     }
@@ -579,14 +578,6 @@ class processor {
      * @return bool
      */
     public function supports_room_user_features(): bool {
-        if (!$this->supports_user_features()) {
-            return false;
-        }
-
-        if (!$this->supports_room_features()) {
-            return false;
-        }
-
         return ($this->provider instanceof room_user_provider);
     }
 

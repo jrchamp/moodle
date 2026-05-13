@@ -671,7 +671,7 @@ class api {
         }
 
         // No user IDs or this provider does not manage users? No action required.
-        if (empty($userids) || !$this->communication->supports_user_features()) {
+        if (empty($userids) || !$this->communication->supports_room_user_features()) {
             return;
         }
 
@@ -699,7 +699,7 @@ class api {
         }
 
         // No user IDs or this provider does not manage users? No action required.
-        if (empty($userids) || !$this->communication->supports_user_features()) {
+        if (empty($userids) || !$this->communication->supports_room_user_features()) {
             return;
         }
 
@@ -733,7 +733,7 @@ class api {
         }
 
         // No user IDs or this provider does not manage users? No action required.
-        if (empty($userids) || !$this->communication->supports_user_features()) {
+        if (empty($userids) || !$this->communication->supports_room_user_features()) {
             return;
         }
 
@@ -762,7 +762,7 @@ class api {
         }
 
         // This provider does not manage users? No action required.
-        if (!$this->communication->supports_user_features()) {
+        if (!$this->communication->supports_room_user_features()) {
             return;
         }
 

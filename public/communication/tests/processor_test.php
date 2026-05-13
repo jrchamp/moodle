@@ -401,10 +401,8 @@ final class processor_test extends \advanced_testcase {
      * Test get room user provider.
      *
      * @covers ::get_room_user_provider
-     * @covers ::require_room_features
      * @covers ::require_room_user_features
      * @covers ::supports_room_user_features
-     * @covers ::supports_room_features
      * @covers ::load_by_instance
      */
     public function test_get_room_user_provider(): void {
