@@ -3874,7 +3874,6 @@ class curl {
                         // Emulate CURLOPT_REDIR_PROTOCOLS behaviour which we have set to (CURLPROTO_HTTP | CURLPROTO_HTTPS) only.
                         $this->errno = CURLE_UNSUPPORTED_PROTOCOL;
                         $this->error = 'Redirect to a URL with unsuported protocol: ' . $this->info['redirect_url'];
-                        curl_close($curl);
                         return $this->error;
                     }
                 }
@@ -3908,7 +3907,6 @@ class curl {
                 $urlisblocked = $this->check_securityhelper_blocklist($redirecturl);
                 if (!is_null($urlisblocked)) {
                     $this->reset_request_state_vars();
-                    curl_close($curl);
                     $this->trigger_url_blocked_event($redirecturl, $urlisblocked, true);
                     return $urlisblocked;
                 }
@@ -3982,8 +3980,6 @@ class curl {
             echo '<h1>Error</h1>';
             var_dump($this->error);
         }
-
-        curl_close($curl);
 
         if (empty($this->error)) {
             return $ret;
