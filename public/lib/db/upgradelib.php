@@ -1089,7 +1089,7 @@ function upgrade_calendar_override_events_fix(stdClass $info, bool $output = tru
 
         // Let's rebuild it by calling to each module API.
         switch ($module->modulename) {
-            case 'assign';
+            case 'assign':
                 if (function_exists('assign_prepare_update_events')) {
                     assign_prepare_update_events($activityrecord);
                 }
