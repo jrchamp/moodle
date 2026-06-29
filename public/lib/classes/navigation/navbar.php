@@ -122,12 +122,12 @@ class navbar extends navigation_node {
      */
     public function get($key, $type = null) {
         foreach ($this->children as &$child) {
-            if ($child->key === $key && ($type == null || $type == $child->type)) {
+            if ($child->key === $key && ($type === null || $type === $child->type)) {
                 return $child;
             }
         }
         foreach ($this->prependchildren as &$child) {
-            if ($child->key === $key && ($type == null || $type == $child->type)) {
+            if ($child->key === $key && ($type === null || $type === $child->type)) {
                 return $child;
             }
         }
