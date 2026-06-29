@@ -77,8 +77,18 @@ class navigation_node_collection implements Countable, IteratorAggregate {
      */
     public function add(navigation_node $node, $beforekey = null) {
         global $CFG;
-        $key = $node->key;
-        $type = $node->type;
+
+        // Fallback to empty string when node key/type are not set.
+        $key = $node->key ?? '';
+        $type = $node->type ?? '';
+
+        // Let developers know that node key/type should not be null.
+        if (!isset($node->key)) {
+            debugging('Navigation node add: Node key should not be null', DEBUG_DEVELOPER);
+        }
+        if (!isset($node->type)) {
+            debugging('Navigation node add: Node type should not be null', DEBUG_DEVELOPER);
+        }
 
         // First check we have a 2nd dimension for this type.
         if (!array_key_exists($type, $this->orderedcollection)) {
