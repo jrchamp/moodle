@@ -68,6 +68,18 @@ class data_portfolio_caller extends portfolio_module_caller_base {
     }
 
     /**
+     * Serialize the object to an array.
+     *
+     * @return array
+     */
+    public function __serialize(): array {
+        return [
+            'id' => $this->id,
+            'recordid' => $this->recordid,
+        ];
+    }
+
+    /**
      * load up the data needed for the export
      *
      * @global object $DB
@@ -254,22 +266,26 @@ class data_portfolio_caller extends portfolio_module_caller_base {
     }
 
     /**
-     * @global object
-     * @return bool|void
+     * Unserialize object from array.
+     *
+     * @param array $data Array of object properties.
      */
-    public function __wakeup() {
+    public function __unserialize(array $data): void {
+        // Normalize keys for backward compatibility with pre-upgrade serialized data.
+        $normalised = [];
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $normalised[end($parts)] = $value;
+        }
+
+        $this->id = $normalised['id'] ?? null;
+        $this->recordid = $normalised['recordid'] ?? null;
+
         global $CFG;
         if (empty($CFG)) {
-            return true; // too early yet
+            return; // Too early yet.
         }
-        foreach ($this->fieldtypes as $key => $field) {
-            $filepath = $CFG->dirroot . '/mod/data/field/' . $field .'/field.class.php';
-            if (!file_exists($filepath)) {
-                continue;
-            }
-            require_once($filepath);
-            $this->fields[$key] = unserialize(serialize($this->fields[$key]));
-        }
+        $this->load_data();
     }
 
     /**

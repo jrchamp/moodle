@@ -243,16 +243,38 @@ class lang_string {
     }
 
     /**
-     * Prepares the lang_string for sleep and stores only the forcedstring and
+     * Prepares the lang_string for serialization and stores only the forcedstring and
      * string properties... the string cannot be regenerated so we need to ensure
      * it is generated for this.
      *
      * @return array
      */
-    public function __sleep() {
+    public function __serialize(): array {
         $this->get_string();
         $this->forcedstring = true;
-        return ['forcedstring', 'string', 'lang'];
+        return [
+            'forcedstring' => $this->forcedstring,
+            'string' => $this->string,
+            'lang' => $this->lang,
+        ];
+    }
+
+    /**
+     * Unserialize object from array.
+     *
+     * @param array $data Array of object properties.
+     */
+    public function __unserialize(array $data): void {
+        // Normalize keys for backward compatibility with pre-upgrade serialized data.
+        $normalised = [];
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $normalised[end($parts)] = $value;
+        }
+
+        $this->forcedstring = $normalised['forcedstring'] ?? false;
+        $this->string = $normalised['string'] ?? null;
+        $this->lang = $normalised['lang'] ?? null;
     }
 
     /**

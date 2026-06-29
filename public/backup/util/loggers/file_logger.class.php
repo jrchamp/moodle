@@ -68,19 +68,47 @@ class file_logger extends base_logger {
         }
     }
 
-    public function __sleep() {
+    /**
+     * Serialize the object to an array.
+     *
+     * @return array
+     */
+    public function __serialize(): array {
         if (is_resource($this->fhandle)) {
             // Blindy close the file handler before serialization.
             @fclose($this->fhandle);
             $this->fhandle = null;
         }
+        $data = [
+            'level' => $this->level,
+            'showdate' => $this->showdate,
+            'showlevel' => $this->showlevel,
+            'next' => $this->next,
+        ];
         if ($this->relativepath !== null) {
-            return ['level', 'showdate', 'showlevel', 'next', 'relativepath'];
+            $data['relativepath'] = $this->relativepath;
+        } else {
+            $data['fullpath'] = $this->fullpath;
         }
-        return ['level', 'showdate', 'showlevel', 'next', 'fullpath'];
+        return $data;
     }
 
-    public function __wakeup() {
+    /**
+     * Unserialize object from array.
+     *
+     * @param array $data Array of object properties.
+     */
+    public function __unserialize(array $data): void {
+        // Normalize keys for backward compatibility with pre-upgrade serialized data.
+        $normalised = [];
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $normalised[end($parts)] = $value;
+        }
+
+        $this->fullpath = $normalised['fullpath'] ?? null;
+        $this->relativepath = $normalised['relativepath'] ?? null;
+
         // Reconstruct fullpath using current backup temp dir.
         if ($this->relativepath !== null) {
             $backuptempdir = make_backup_temp_directory('');
@@ -97,6 +125,11 @@ class file_logger extends base_logger {
                 $this->fullpath = $backuptempdir . '/' . $this->fullpath;
             }
         }
+
+        $this->level = $normalised['level'] ?? null;
+        $this->showdate = $normalised['showdate'] ?? null;
+        $this->showlevel = $normalised['showlevel'] ?? null;
+        $this->next = $normalised['next'] ?? null;
 
         if ($this->level > backup::LOG_NONE) { // Only create the file if we are going to log something
             if (! $this->fhandle = fopen($this->fullpath, 'a')) {
