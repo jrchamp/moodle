@@ -55,6 +55,11 @@ class writer extends \core\dataformat\base {
     protected $columns;
 
     /**
+     * @var ?int Cached heading height, calculated once per sheet.
+     */
+    private $headingheight = null;
+
+    /**
      * writer constructor.
      */
     public function __construct() {
@@ -89,6 +94,7 @@ class writer extends \core\dataformat\base {
 
         $this->colwidth = $pagewidth / count($columns);
         $this->columns = $columns;
+        $this->headingheight = null;
 
         $this->print_heading($this->pdf);
     }
@@ -232,10 +238,13 @@ class writer extends \core\dataformat\base {
      * @return int
      */
     private function get_heading_height() {
-        $height = 0;
-        foreach ($this->columns as $columns) {
-            $height = max($height, $this->pdf->getStringHeight($this->colwidth, $columns, false, true, '', 1));
+        if ($this->headingheight === null) {
+            $height = 0;
+            foreach ($this->columns as $columns) {
+                $height = max($height, $this->pdf->getStringHeight($this->colwidth, $columns, false, true, '', 1));
+            }
+            $this->headingheight = $height;
         }
-        return $height;
+        return $this->headingheight;
     }
 }
