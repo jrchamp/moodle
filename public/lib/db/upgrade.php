@@ -1942,5 +1942,21 @@ function xmldb_main_upgrade($oldversion) {
         upgrade_main_savepoint(true, 2026061600.01);
     }
 
+    if ($oldversion < 2026070800.00) {
+        // MDL-65182. Floating-point epsilon on letter grade boundary comparisons.
+        // Float values are not infinitely precise. Without the epsilon fix, a score
+        // at exactly the boundary may fall just below it due to IEEE-754 rounding,
+        // awarding the wrong letter grade.
+        // Existing courses that display letter grades must be frozen to let teachers
+        // decide when to apply the change.
+        if (empty($CFG->upgrade_courseletterboundaryepsilon)) {
+            require_once($CFG->libdir . '/db/upgradelib.php');
+            upgrade_course_letter_boundary_epsilon();
+            set_config('upgrade_courseletterboundaryepsilon', 1);
+        }
+
+        upgrade_main_savepoint(true, 2026070800.00);
+    }
+
     return true;
 }

@@ -527,6 +527,11 @@ class restore_gradebook_structure_step extends restore_structure_step {
             upgrade_course_letter_boundary($this->get_courseid());
         }
 
+        // Courses restored from backups made before the letter boundary epsilon fix (20260708) should be checked.
+        if (!$gradebookcalculationsfreeze && $restoretask->backup_version_compare(20260708, '<')) {
+            require_once($CFG->libdir . '/db/upgradelib.php');
+            upgrade_course_letter_boundary_epsilon($this->get_courseid());
+        }
     }
 
     /**

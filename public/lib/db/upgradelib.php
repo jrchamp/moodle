@@ -425,6 +425,83 @@ function upgrade_course_letter_boundary($courseid = null) {
 }
 
 /**
+ * Marks courses using letter grades for freeze to prevent the floating-point epsilon fix
+ * from changing grades without consent.
+ *
+ * Used during upgrade and in course restore process.
+ *
+ * Float values are not infinitely precise, so PHP's epsilon value must be added when comparing
+ * scores to letter grade boundaries. The fix adds 100 * PHP_FLOAT_EPSILON to the value before
+ * comparison. Courses using letter grades are frozen so admins can decide when to apply the change.
+ *
+ * @param int $courseid Specify a course ID to run this script on just one course.
+ */
+function upgrade_course_letter_boundary_epsilon($courseid = null) {
+    global $DB, $CFG;
+
+    $coursesql = '';
+    $params = ['contextlevel' => CONTEXT_COURSE];
+    if (!empty($courseid)) {
+        $coursesql = 'AND c.id = :courseid';
+        $params['courseid'] = $courseid;
+    }
+
+    // Check the setting for showing the letter grade in a column (default is false).
+    $usergradelettercolumnsetting = 0;
+    if (isset($CFG->grade_report_user_showlettergrade)) {
+        $usergradelettercolumnsetting = (int)$CFG->grade_report_user_showlettergrade;
+    }
+    $lettercolumnsql = '';
+    if ($usergradelettercolumnsetting) {
+        // The system default is to show a column with letters (and the course uses the defaults).
+        $lettercolumnsql = '(gss.value is NULL OR ' . $DB->sql_compare_text('gss.value') .  " <> '0')";
+    } else {
+        // The course displays a column with letters.
+        $lettercolumnsql = $DB->sql_compare_text('gss.value') .  " = '1'";
+    }
+
+    // 3, 13, 23, 31, and 32 are the grade display types that incorporate showing letters. See lib/grade/constants/php.
+    $systemusesletters = (int) (isset($CFG->grade_displaytype) && in_array($CFG->grade_displaytype, [3, 13, 23, 31, 32]));
+    $contextselect = context_helper::get_preload_record_columns_sql('ctx');
+
+    $sql = "SELECT DISTINCT c.id AS courseid, $contextselect
+              FROM {course} c
+              JOIN {context} ctx ON ctx.instanceid = c.id AND ctx.contextlevel = :contextlevel
+              JOIN {grade_items} gi ON c.id = gi.courseid
+         LEFT JOIN {grade_settings} gs ON c.id = gs.courseid AND gs.name = 'displaytype'
+         LEFT JOIN {grade_settings} gss ON gss.courseid = c.id AND gss.name = 'report_user_showlettergrade'
+             WHERE
+                (
+                    -- A grade item is using letters
+                    (gi.display IN (3, 13, 23, 31, 32))
+                    -- OR the course is using letters
+                    OR (" . $DB->sql_compare_text('gs.value') . " IN ('3', '13', '23', '31', '32')
+                        -- OR the course using the system default which is letters
+                        OR (gs.value IS NULL AND $systemusesletters = 1)
+                    )
+                    OR ($lettercolumnsql)
+                )
+                -- AND the course matches
+                $coursesql";
+
+    $potentialcourses = $DB->get_recordset_sql($sql, $params);
+
+    foreach ($potentialcourses as $value) {
+        $gradebookfreeze = get_config('core', 'gradebook_calculations_freeze_' . $value->courseid);
+
+        // Skip if the course was already frozen by the standardisation fix (20160518) — the epsilon
+        // fix only applies alongside standardised boundaries, which those courses don't use.
+        if ($gradebookfreeze && (int) $gradebookfreeze <= 20160518) {
+            continue;
+        }
+        if (!$gradebookfreeze) {
+            set_config('gradebook_calculations_freeze_' . $value->courseid, 20260708);
+        }
+    }
+    $potentialcourses->close();
+}
+
+/**
  * Checks the letter boundary of the provided context to see if it needs freezing.
  * Each letter boundary is tested to see if receiving that boundary number will
  * result in achieving the cosponsoring letter.

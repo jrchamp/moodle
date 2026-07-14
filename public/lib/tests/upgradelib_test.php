@@ -629,6 +629,45 @@ final class upgradelib_test extends advanced_testcase {
     }
 
     /**
+     * Test upgrade_course_letter_boundary_epsilon function.
+     *
+     * @covers \upgrade_course_letter_boundary_epsilon
+     */
+    public function test_upgrade_course_letter_boundary_epsilon(): void {
+        global $CFG;
+        $this->resetAfterTest();
+        require_once($CFG->libdir . '/db/upgradelib.php');
+
+        // Course with no letter grades — should NOT be frozen.
+        $course1 = $this->getDataGenerator()->create_course();
+        // Course with letter grades — should be frozen.
+        $course2 = $this->getDataGenerator()->create_course();
+        $context2 = context_course::instance($course2->id);
+        grade_set_setting($course2->id, 'displaytype', '3');
+        // Course with letter grades and existing 20160518 freeze — should NOT be re-frozen.
+        $course3 = $this->getDataGenerator()->create_course();
+        $context3 = context_course::instance($course3->id);
+        grade_set_setting($course3->id, 'displaytype', '3');
+        set_config('gradebook_calculations_freeze_' . $course3->id, 20160518);
+        // Course with letter grades and existing freeze at another date — check freeze unchanged.
+        $course4 = $this->getDataGenerator()->create_course();
+        $context4 = context_course::instance($course4->id);
+        grade_set_setting($course4->id, 'displaytype', '3');
+        set_config('gradebook_calculations_freeze_' . $course4->id, 20220101);
+
+        upgrade_course_letter_boundary_epsilon();
+
+        // Course without letter grades should NOT be frozen.
+        $this->assertTrue(empty($CFG->{'gradebook_calculations_freeze_' . $course1->id}));
+        // Course with letter grades should be frozen at the epsilon date.
+        $this->assertEquals(20260708, $CFG->{'gradebook_calculations_freeze_' . $course2->id});
+        // Course with existing 20160518 freeze should remain at that date.
+        $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $course3->id});
+        // Course with existing 20220101 freeze should remain unchanged.
+        $this->assertEquals(20220101, $CFG->{'gradebook_calculations_freeze_' . $course4->id});
+    }
+
+    /**
      * Assigns letter boundaries with comparison problems.
      *
      * @param int $contextid Context ID.
