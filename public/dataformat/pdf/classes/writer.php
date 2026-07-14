@@ -138,11 +138,12 @@ class writer extends \core\dataformat\base {
             $numpages = $pdf2->getNumPages();
             $pdf2->AddPage('L');
             $this->print_heading($pdf2);
+            $yvalue = $pdf2->GetY();
             $pdf2->writeHTMLCell($this->colwidth, 0, '', '', $cell, 1, 1, false, true, 'L');
             $pagesadded = $pdf2->getNumPages() - $numpages;
             $margins = $pdf2->getMargins();
             $pageheight = $pdf2->getPageHeight() - $margins['top'] - $margins['bottom'];
-            $cellheight = ($pagesadded - 1) * $pageheight + $pdf2->getY() - $margins['top'] - $this->get_heading_height();
+            $cellheight = ($pagesadded - 1) * $pageheight + $pdf2->GetY() - $yvalue;
             $rowheight = max($rowheight, $cellheight);
             $pdf2->rollbackTransaction();
         }
@@ -199,9 +200,10 @@ class writer extends \core\dataformat\base {
 
         $total = count($this->columns);
         $counter = 1;
+        $headingheight = $this->get_heading_height();
         foreach ($this->columns as $columns) {
             $nextposition = ($counter == $total) ? 1 : 0;
-            $pdf->Multicell($this->colwidth, $this->get_heading_height(), $columns, 1, 'C', true, $nextposition);
+            $pdf->Multicell($this->colwidth, $headingheight, $columns, 1, 'C', true, $nextposition);
             $counter++;
         }
 
