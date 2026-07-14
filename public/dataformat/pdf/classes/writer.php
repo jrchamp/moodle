@@ -128,27 +128,35 @@ class writer extends \core\dataformat\base {
     public function write_record($record, $rownum) {
         $rowheight = 0;
 
+        $margins = $this->pdf->getMargins();
+
         $record = $this->format_record($record);
         foreach ($record as $cell) {
             // We need to calculate the row height (accounting for any content). Unfortunately TCPDF doesn't provide an easy
             // method to do that, so we create a second PDF inside a transaction, add cell content and use the largest cell by
             // height. Solution similar to that at https://stackoverflow.com/a/1943096.
-            $pdf2 = clone $this->pdf;
-            $pdf2->startTransaction();
-            $numpages = $pdf2->getNumPages();
-            $pdf2->AddPage('L');
-            $this->print_heading($pdf2);
-            $yvalue = $pdf2->GetY();
+            if (!isset($pdf2)) {
+                $pdf2 = clone $this->pdf;
+                $pdf2->startTransaction();
+                $pdf2->AddPage('L');
+                $this->print_heading($pdf2);
+
+                $numpages = $pdf2->getNumPages();
+                $pageheight = $pdf2->getPageHeight() - $margins['top'] - $margins['bottom'];
+                $yvalue = $pdf2->GetY();
+            }
+
             $pdf2->writeHTMLCell($this->colwidth, 0, '', '', $cell, 1, 1, false, true, 'L');
             $pagesadded = $pdf2->getNumPages() - $numpages;
-            $margins = $pdf2->getMargins();
-            $pageheight = $pdf2->getPageHeight() - $margins['top'] - $margins['bottom'];
-            $cellheight = ($pagesadded - 1) * $pageheight + $pdf2->GetY() - $yvalue;
+            $cellheight = $pagesadded * $pageheight + $pdf2->GetY() - $yvalue;
             $rowheight = max($rowheight, $cellheight);
+            $pdf2->setY($yvalue);
+        }
+
+        if (isset($pdf2)) {
             $pdf2->rollbackTransaction();
         }
 
-        $margins = $this->pdf->getMargins();
         if ($this->pdf->getNumPages() > 1 &&
                 ($this->pdf->GetY() + $rowheight + $margins['bottom'] > $this->pdf->getPageHeight())) {
             $this->pdf->AddPage('L');
