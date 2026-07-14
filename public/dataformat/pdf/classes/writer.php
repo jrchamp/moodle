@@ -157,8 +157,10 @@ class writer extends \core\dataformat\base {
             $pdf2->rollbackTransaction();
         }
 
-        if ($this->pdf->getNumPages() > 1 &&
-                ($this->pdf->GetY() + $rowheight + $margins['bottom'] > $this->pdf->getPageHeight())) {
+        // If the current page has data and the new row will not fit on the current page, add a new page.
+        $pagehasdata = ($this->pdf->GetY() > $margins['top'] + $this->get_heading_height());
+        $rowwilloverflow = ($this->pdf->GetY() + $rowheight + $margins['bottom'] > $this->pdf->getPageHeight());
+        if ($pagehasdata && $rowwilloverflow) {
             $this->pdf->AddPage('L');
             $this->print_heading($this->pdf);
         }
