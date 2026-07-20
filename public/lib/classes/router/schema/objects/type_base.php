@@ -16,6 +16,7 @@
 
 namespace core\router\schema\objects;
 
+use core\param;
 use core\router\schema\openapi_base;
 use core\router\schema\specification;
 
@@ -63,10 +64,10 @@ abstract class type_base extends openapi_base {
     /**
      * Get the additional OpenAPI properties if relevant.
      *
-     * @param string|null|type_base $type
+     * @param string|null|type_base|param $type
      * @return bool|array
      */
-    protected function get_additional_properties(string|null|type_base $type): bool|array {
+    protected function get_additional_properties(string|null|type_base|param $type): bool|array {
         // The additionalProperties are described here:
         // https://spec.openapis.org/oas/v3.1.0#schema-object-examples.
         if ($type === null) {
@@ -78,6 +79,10 @@ abstract class type_base extends openapi_base {
             return [
                 '$ref' => $type->get_reference(),
             ];
+        }
+
+        if ($type instanceof param) {
+            return (array) $this->get_schema_from_type($type);
         }
 
         // TODO MDL-82243: Validate against supported OpenAPI types.
