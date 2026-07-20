@@ -83,6 +83,19 @@ final class array_of_things_test extends route_testcase {
         ], $schema);
     }
 
+    public function test_basics_with_param_type(): void {
+        $object = new array_of_things(
+            thingtype: param::INT,
+        );
+
+        $schema = $object->get_openapi_description(new specification());
+        $this->assertEquals((object) [
+            'type' => 'object',
+            'additionalProperties' => [
+                'type' => 'integer',
+            ],
+        ], $schema);
+    }
 
     /**
      * Test tha the validate_data method successfully validates content.
