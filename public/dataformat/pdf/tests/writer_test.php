@@ -35,8 +35,88 @@ use moodle_url;
  * @package    dataformat_pdf
  * @copyright  2020 Paul Holden <paulh@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers     \dataformat_pdf\writer
  */
 final class writer_test extends \advanced_testcase {
+    /**
+     * Get the TCPDF instance from the writer via reflection.
+     *
+     * @param writer $writer
+     * @return \pdf
+     */
+    private function get_pdf(writer $writer): \pdf {
+        $prop = new \ReflectionProperty(writer::class, 'pdf');
+        $prop->setAccessible(true);
+        return $prop->getValue($writer);
+    }
+
+    /**
+     * Get the pages array from a TCPDF instance via reflection.
+     *
+     * @param \pdf $pdf
+     * @return string[]
+     */
+    private function get_pdf_pages(\pdf $pdf): array {
+        $prop = new \ReflectionProperty(\pdf::class, 'pages');
+        $prop->setAccessible(true);
+        return $prop->getValue($pdf);
+    }
+
+    /**
+     * Test that every page has headings and rendering is timely.
+     */
+    public function test_headings_performance(): void {
+        $this->resetAfterTest(true);
+
+        $writer = new writer();
+        $writer->set_filepath(make_request_directory() . '/test.pdf');
+        $writer->start_output_to_file();
+
+        $pdf = $this->get_pdf($writer);
+        // Disable compression so we can read page content directly.
+        $pdf->setCompression(false);
+
+        $start = hrtime(true);
+        $columns = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'];
+        $writer->start_sheet($columns);
+        for ($rownum = 0; $rownum < 200; $rownum++) {
+            $rowlabel = $rownum + 1;
+            $writer->write_record(
+                [
+                    "Cell A{$rowlabel}",
+                    "Cell B{$rowlabel}",
+                    "Cell C{$rowlabel}",
+                    "Cell D{$rowlabel}",
+                    "Cell E{$rowlabel}",
+                    "Cell F{$rowlabel}",
+                    "Cell G{$rowlabel}",
+                    "Cell H{$rowlabel}",
+                    "Cell I{$rowlabel}",
+                    "Cell J{$rowlabel}",
+                ],
+                $rownum
+            );
+        }
+        $writer->close_sheet($columns);
+        $secondselapsed = (hrtime(true) - $start) / 1e+9;
+
+        $pagecount = $pdf->getNumPages();
+        $this->assertGreaterThan(1, $pagecount);
+
+        $pages = $this->get_pdf_pages($pdf);
+        $this->assertCount($pagecount, $pages);
+
+        foreach ($pages as $pagenum => $pagecontent) {
+            $this->assertTrue(
+                str_contains($pagecontent, "\x00F\x00i\x00r\x00s\x00t"),
+                'Page ' . $pagenum . ' should contain the heading row',
+            );
+        }
+
+        $writer->close_output_to_file();
+
+        $this->assertLessThan(5, $secondselapsed, 'Generating a 10x200 PDF should be far less than 5 seconds');
+    }
 
     /**
      * Test writing data whose content contains an image with pluginfile.php source
