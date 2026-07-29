@@ -503,6 +503,19 @@ function filter_get_all_local_settings($contextid) {
     );
 }
 
+function filter_is_preloaded(string $preloadkey) {
+    global $FILTERLIB_PRIVATE;
+
+    if (!isset($FILTERLIB_PRIVATE)) {
+        $FILTERLIB_PRIVATE = (object) [
+            'active' => [],
+            'preloaded' => [],
+        ];
+    }
+
+    return isset($FILTERLIB_PRIVATE->preloaded[$preloadkey]);
+}
+
 /**
  * Get the list of active filters, in the order that they should be used
  * for a particular context, along with any local configuration variables.
@@ -516,66 +529,11 @@ function filter_get_all_local_settings($contextid) {
  *      array(tex' => array())
  */
 function filter_get_active_in_context($context) {
-    global $DB, $FILTERLIB_PRIVATE;
+    global $FILTERLIB_PRIVATE;
 
-    if (!isset($FILTERLIB_PRIVATE)) {
-        $FILTERLIB_PRIVATE = new stdClass();
-    }
+    filter_preload_contexts($context, 'x' . $context->id);
 
-    // Use cache (this is a within-request cache only) if available. See
-    // function filter_preload_activities.
-    if (isset($FILTERLIB_PRIVATE->active) &&
-            array_key_exists($context->id, $FILTERLIB_PRIVATE->active)) {
-        return $FILTERLIB_PRIVATE->active[$context->id];
-    }
-
-    $contextids = str_replace('/', ',', trim($context->path, '/'));
-
-    // Postgres recordset performance is much better with a limit.
-    // This should be much larger than anything needed in practice. The code below checks we don't hit this limit.
-    $maxpossiblerows = 10000;
-    // The key line in the following query is the HAVING clause.
-    // If a filter is disabled at system context, then there is a row with active -9999 and depth 1,
-    // so the -MIN is always large, and the MAX will be smaller than that and this filter won't be returned.
-    // Otherwise, there will be a bunch of +/-1s at various depths,
-    // and this clause verifies there is a +1 that deeper than any -1.
-    $rows = $DB->get_recordset_sql("
-            SELECT active.filter, fc.name, fc.value
-
-              FROM (
-                    SELECT fa.filter, MAX(fa.sortorder) AS sortorder
-                      FROM {filter_active} fa
-                      JOIN {context} ctx ON fa.contextid = ctx.id
-                     WHERE ctx.id IN ($contextids)
-                  GROUP BY fa.filter
-                    HAVING MAX(fa.active * ctx.depth) > -MIN(fa.active * ctx.depth)
-                   ) active
-         LEFT JOIN {filter_config} fc ON fc.filter = active.filter AND fc.contextid = ?
-
-          ORDER BY active.sortorder
-        ", [$context->id], 0, $maxpossiblerows);
-
-    // Massage the data into the specified format to return.
-    $filters = [];
-    $rowcount = 0;
-    foreach ($rows as $row) {
-        $rowcount += 1;
-        if (!isset($filters[$row->filter])) {
-            $filters[$row->filter] = [];
-        }
-        if (!is_null($row->name)) {
-            $filters[$row->filter][$row->name] = $row->value;
-        }
-    }
-    $rows->close();
-
-    if ($rowcount >= $maxpossiblerows) {
-        // If this ever did happen, which seems essentially impossible, then it would lead to very subtle and
-        // hard to understand bugs, so ensure it leads to an unmissable error.
-        throw new coding_exception('Hit the row limit that should never be hit in filter_get_active_in_context.');
-    }
-
-    return $filters;
+    return $FILTERLIB_PRIVATE->active[$context->id] ?? [];
 }
 
 /**
@@ -585,112 +543,111 @@ function filter_get_active_in_context($context) {
  * @param course_modinfo $modinfo Course object from get_fast_modinfo
  */
 function filter_preload_activities(course_modinfo $modinfo) {
-    global $DB, $FILTERLIB_PRIVATE;
-
-    if (!isset($FILTERLIB_PRIVATE)) {
-        $FILTERLIB_PRIVATE = new stdClass();
-    }
-
     // Don't repeat preload.
-    if (!isset($FILTERLIB_PRIVATE->preloaded)) {
-        $FILTERLIB_PRIVATE->preloaded = array();
-    }
-    if (!empty($FILTERLIB_PRIVATE->preloaded[$modinfo->get_course_id()])) {
+    $preloadkey = 'c' . $modinfo->get_course_id();
+    if (filter_is_preloaded($preloadkey)) {
         return;
     }
-    $FILTERLIB_PRIVATE->preloaded[$modinfo->get_course_id()] = true;
 
-    // Get contexts for all CMs.
-    $cmcontexts = array();
-    $cmcontextids = array();
+    // Get course context.
+    $coursecontext = context_course::instance($modinfo->get_course_id());
+
+    // Get contextids for all CMs.
+    $cmcontextids = [];
     foreach ($modinfo->get_cms() as $cm) {
         $modulecontext = context_module::instance($cm->id);
         $cmcontextids[] = $modulecontext->id;
-        $cmcontexts[] = $modulecontext;
     }
 
-    // Get course context and all other parents.
-    $coursecontext = context_course::instance($modinfo->get_course_id());
-    $parentcontextids = explode('/', substr($coursecontext->path, 1));
-    $allcontextids = array_merge($cmcontextids, $parentcontextids);
+    filter_preload_contexts($coursecontext, $preloadkey, $cmcontextids);
+}
+
+function filter_preload_contexts(context $maincontext, string $preloadkey, array $childcontextids = []) {
+    global $DB, $FILTERLIB_PRIVATE;
+
+    if (filter_is_preloaded($preloadkey)) {
+        return;
+    }
+
+    $FILTERLIB_PRIVATE->preloaded[$preloadkey] = true;
+
+    $parentcontextids = explode('/', substr($maincontext->path, 1));
+    $allcontextids = array_merge($parentcontextids, $childcontextids);
+    $cachecontextids = array_merge([$maincontext->id], $childcontextids);
 
     // Get all filter_active rows relating to all these contexts.
-    list ($sql, $params) = $DB->get_in_or_equal($allcontextids);
-    $filteractives = $DB->get_records_select('filter_active', "contextid $sql", $params, 'sortorder');
+    [$sql, $params] = $DB->get_in_or_equal($allcontextids);
+    $filteractives = $DB->get_records_select('filter_active', "contextid $sql", $params);
 
-    // Get all filter_config only for the cm contexts.
-    list ($sql, $params) = $DB->get_in_or_equal($cmcontextids);
+    // Get all filter_config for cache contexts.
+    [$sql, $params] = $DB->get_in_or_equal($cachecontextids);
     $filterconfigs = $DB->get_records_select('filter_config', "contextid $sql", $params);
 
     // Note: I was a bit surprised that filter_config only works for the
-    // most specific context (i.e. it does not need to be checked for course
+    // most specific context (i.e. it does not need to be checked for main
     // context if we only care about CMs) however basede on code in
     // filter_get_active_in_context, this does seem to be correct.
 
-    // Build course default active list. Initially this will be an array of
+    // Build default active list. Initially this will be an array of
     // filter name => active score (where an active score >0 means it's active).
-    $courseactive = array();
+    $defaultactive = [];
 
-    // Also build list of filter_active rows below course level, by contextid.
-    $remainingactives = array();
+    // Also build list of filter_active rows below main level, by contextid.
+    $remainingactives = [];
 
     // Array lists filters that are banned at top level.
-    $banned = array();
+    $banned = [];
 
     // Remember the order of filters from the system level.
     $filterorder = [];
 
+    $depths = [];
+    foreach ($parentcontextids as $depth => $parentcontextid) {
+        $depths[$parentcontextid] = $depth + 1;
+    }
+
     // Add any active filters in parent contexts to the array.
     foreach ($filteractives as $row) {
-        $depth = array_search($row->contextid, $parentcontextids);
-        if ($depth !== false) {
-            if ($depth == 0) {
+        if (isset($depths[$row->contextid])) {
+            $depth = $depths[$row->contextid];
+
+            if ($depth == 1) {
                 $filterorder[$row->filter] = $row->sortorder;
             }
 
             // Find entry.
-            if (!array_key_exists($row->filter, $courseactive)) {
-                $courseactive[$row->filter] = 0;
-            }
+            $defaultactive += [$row->filter => 0];
             // This maths copes with reading rows in any order. Turning on/off
             // at site level counts 1, at next level down 4, at next level 9,
             // then 16, etc. This means the deepest level always wins, except
             // against the -9999 at top level.
-            $courseactive[$row->filter] +=
-                ($depth + 1) * ($depth + 1) * $row->active;
+            $defaultactive[$row->filter] += $depth * $depth * $row->active;
 
             if ($row->active == TEXTFILTER_DISABLED) {
                 $banned[$row->filter] = true;
             }
         } else {
             // Build list of other rows indexed by contextid.
-            if (!array_key_exists($row->contextid, $remainingactives)) {
-                $remainingactives[$row->contextid] = array();
-            }
-            $remainingactives[$row->contextid][] = $row;
+            $remainingactives[$row->contextid][$row->id] = $row;
         }
     }
 
     // Filters must be applied in order that is set at the system level.
     uksort(
-        $courseactive,
+        $defaultactive,
         function ($a, $b) use ($filterorder) {
             // In case a filter has no system level sortorder, sort it last.
             return ($filterorder[$a] ?? PHP_INT_MAX) <=> ($filterorder[$b] ?? PHP_INT_MAX);
         }
     );
 
-    // Loop through the contexts to reconstruct filter_active lists for each
-    // cm on the course.
-    if (!isset($FILTERLIB_PRIVATE->active)) {
-        $FILTERLIB_PRIVATE->active = array();
-    }
-    foreach ($cmcontextids as $contextid) {
-        // Copy course list.
-        $contextactive = $courseactive;
+    // Build filter_active lists for each child context.
+    foreach ($cachecontextids as $contextid) {
+        // Copy default list.
+        $contextactive = $defaultactive;
 
         // Are there any changes to the active list?
-        if (array_key_exists($contextid, $remainingactives)) {
+        if (isset($remainingactives[$contextid])) {
             foreach ($remainingactives[$contextid] as $row) {
                 if ($row->active > 0 && empty($banned[$row->filter])) {
                     // If it's marked active for specific context, add entry
@@ -713,7 +670,9 @@ function filter_preload_activities(course_modinfo $modinfo) {
             }
         }
 
+        // Save the active list and mark it as preloaded.
         $FILTERLIB_PRIVATE->active[$contextid] = $contextactive;
+        $FILTERLIB_PRIVATE->preloaded['x' . $contextid] = true;
     }
 
     // Process all config rows to add config data to these entries.
