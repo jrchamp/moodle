@@ -569,6 +569,71 @@ final class filterlib_test extends \advanced_testcase {
         filter_get_available_in_context($syscontext);
     }
 
+    /**
+     * Test that filter_get_available_in_context populates the shared
+     * FILTERLIB_PRIVATE cache, so filter_get_active_in_context needs no queries.
+     *
+     * @covers ::filter_get_available_in_context
+     * @covers ::filter_get_active_in_context
+     * @covers ::filter_preload_contexts
+     */
+    public function test_available_in_context_populates_active_cache(): void {
+        global $FILTERLIB_PRIVATE, $DB;
+
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config(); // Remove all filters.
+        [
+            'childcontext' => $childcontext
+        ] = $this->setup_available_in_context_tests();
+        // Setup fixture.
+        filter_set_global_state('name', TEXTFILTER_ON);
+        // Exercise SUT. filter_get_available_in_context should populate the same
+        // FILTERLIB_PRIVATE cache, so filter_get_active_in_context needs no queries.
+        $FILTERLIB_PRIVATE = null;
+        filter_get_available_in_context($childcontext);
+        $before = $DB->perf_get_reads();
+        $filters = filter_get_active_in_context($childcontext);
+        $after = $DB->perf_get_reads();
+        // Validate.
+        $this->assertEquals($before, $after);
+        $this->assertSame(['name' => []], $filters);
+    }
+
+    /**
+     * Test that filter_get_available_in_context reuses the state cached by a
+     * course-wide preload for its parent context, making no further queries.
+     *
+     * @covers ::filter_get_available_in_context
+     * @covers ::filter_preload_activities
+     * @covers ::filter_preload_contexts
+     */
+    public function test_available_in_context_reuses_course_preload(): void {
+        global $FILTERLIB_PRIVATE, $DB;
+
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config(); // Remove all filters.
+        [
+            'course' => $course,
+            'activity1context' => $activity1context,
+        ] = $this->setup_preload_activities_test();
+        // Setup fixture.
+        filter_set_global_state('name', TEXTFILTER_ON);
+        filter_set_local_state('name', $activity1context->id, TEXTFILTER_OFF);
+        // A course preload caches the state of the course context, including the
+        // local overrides of all its activities.
+        $FILTERLIB_PRIVATE = null;
+        $modinfo = new \course_modinfo($course, 2);
+        filter_preload_activities($modinfo);
+        // Exercise SUT. filter_get_available_in_context should reuse that cached
+        // state for the parent (course) context, so no queries are made.
+        $before = $DB->perf_get_reads();
+        $filters = filter_get_available_in_context($activity1context);
+        $after = $DB->perf_get_reads();
+        // Validate.
+        $this->assertEquals($before, $after);
+        $this->assert_one_available_filter('name', TEXTFILTER_OFF, TEXTFILTER_ON, $filters);
+    }
+
     protected function setup_preload_activities_test() {
         $syscontext = \context_system::instance();
         $catcontext = \context_coursecat::instance(1);
