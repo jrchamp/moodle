@@ -227,6 +227,8 @@ function filter_set_global_state($filtername, $state, $move = 0) {
     }
 
     $transaction->allow_commit();
+
+    filter_reset_request_cache();
 }
 
 /**
@@ -408,6 +410,7 @@ function filter_set_local_state($filter, $contextid, $state) {
 
     if ($state == TEXTFILTER_INHERIT) {
         $DB->delete_records('filter_active', array('filter' => $filter, 'contextid' => $contextid));
+        filter_reset_request_cache();
         return;
     }
 
@@ -427,6 +430,8 @@ function filter_set_local_state($filter, $contextid, $state) {
     } else {
         $DB->update_record('filter_active', $rec);
     }
+
+    filter_reset_request_cache();
 }
 
 /**
@@ -456,6 +461,8 @@ function filter_set_local_config($filter, $contextid, $name, $value) {
     } else {
         $DB->update_record('filter_config', $rec);
     }
+
+    filter_reset_request_cache();
 }
 
 /**
@@ -468,6 +475,7 @@ function filter_set_local_config($filter, $contextid, $name, $value) {
 function filter_unset_local_config($filter, $contextid, $name) {
     global $DB;
     $DB->delete_records('filter_config', array('filter' => $filter, 'contextid' => $contextid, 'name' => $name));
+    filter_reset_request_cache();
 }
 
 /**
@@ -517,6 +525,18 @@ function filter_is_preloaded(string $preloadkey) {
     }
 
     return isset($FILTERLIB_PRIVATE->preloaded[$preloadkey]);
+}
+
+/**
+ * Drop the per-request filter cache (FILTERLIB_PRIVATE).
+ *
+ * Must be called after any change to the filter_active or filter_config tables,
+ * so that the cached filter state always reflects the current data, even when
+ * the tables are modified midway through a request. See filter_preload_contexts().
+ */
+function filter_reset_request_cache(): void {
+    global $FILTERLIB_PRIVATE;
+    $FILTERLIB_PRIVATE = null;
 }
 
 /**
@@ -591,9 +611,12 @@ function filter_preload_contexts(context $maincontext, string $preloadkey, array
 
     // Cache the filter_active rows of any context not read yet, so each context
     // is only queried once.
-    $missingactiveids = array_diff($allcontextids, array_keys($FILTERLIB_PRIVATE->rows ?? []));
+    $missingactiveids = array_diff_key(
+        array_combine($allcontextids, $allcontextids),
+        $FILTERLIB_PRIVATE->rows
+    );
     if (!empty($missingactiveids)) {
-        [$sql, $params] = $DB->get_in_or_equal($missingactiveids);
+        [$sql, $params] = $DB->get_in_or_equal(array_values($missingactiveids));
         $newrows = $DB->get_records_select('filter_active', "contextid $sql", $params);
         foreach ($newrows as $row) {
             $FILTERLIB_PRIVATE->rows[$row->contextid][$row->id] = $row;
@@ -609,9 +632,12 @@ function filter_preload_contexts(context $maincontext, string $preloadkey, array
     }
 
     // Likewise cache the filter_config rows of any context not read yet.
-    $missingconfigids = array_diff($cachecontextids, array_keys($FILTERLIB_PRIVATE->configs ?? []));
+    $missingconfigids = array_diff_key(
+        array_combine($cachecontextids, $cachecontextids),
+        $FILTERLIB_PRIVATE->configs
+    );
     if (!empty($missingconfigids)) {
-        [$sql, $params] = $DB->get_in_or_equal($missingconfigids);
+        [$sql, $params] = $DB->get_in_or_equal(array_values($missingconfigids));
         $newconfigs = $DB->get_records_select('filter_config', "contextid $sql", $params);
         foreach ($newconfigs as $row) {
             $FILTERLIB_PRIVATE->configs[$row->contextid][$row->id] = $row;
@@ -835,6 +861,7 @@ function filter_delete_all_for_filter($filter) {
     unset_all_config_for_plugin('filter_' . $filter);
     $DB->delete_records('filter_active', array('filter' => $filter));
     $DB->delete_records('filter_config', array('filter' => $filter));
+    filter_reset_request_cache();
 }
 
 /**
@@ -846,6 +873,7 @@ function filter_delete_all_for_context($contextid) {
     global $DB;
     $DB->delete_records('filter_active', array('contextid' => $contextid));
     $DB->delete_records('filter_config', array('contextid' => $contextid));
+    filter_reset_request_cache();
 }
 
 /**

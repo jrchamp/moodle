@@ -578,7 +578,7 @@ final class filterlib_test extends \advanced_testcase {
      * @covers ::filter_preload_contexts
      */
     public function test_available_in_context_populates_active_cache(): void {
-        global $FILTERLIB_PRIVATE, $DB;
+        global $DB;
 
         $this->resetAfterTest();
         $this->remove_all_filters_from_config(); // Remove all filters.
@@ -589,7 +589,7 @@ final class filterlib_test extends \advanced_testcase {
         filter_set_global_state('name', TEXTFILTER_ON);
         // Exercise SUT. filter_get_available_in_context should populate the same
         // FILTERLIB_PRIVATE cache, so filter_get_active_in_context needs no queries.
-        $FILTERLIB_PRIVATE = null;
+        filter_reset_request_cache();
         filter_get_available_in_context($childcontext);
         $before = $DB->perf_get_reads();
         $filters = filter_get_active_in_context($childcontext);
@@ -608,7 +608,7 @@ final class filterlib_test extends \advanced_testcase {
      * @covers ::filter_preload_contexts
      */
     public function test_available_in_context_reuses_course_preload(): void {
-        global $FILTERLIB_PRIVATE, $DB;
+        global $DB;
 
         $this->resetAfterTest();
         $this->remove_all_filters_from_config(); // Remove all filters.
@@ -621,7 +621,7 @@ final class filterlib_test extends \advanced_testcase {
         filter_set_local_state('name', $activity1context->id, TEXTFILTER_OFF);
         // A course preload caches the state of the course context, including the
         // local overrides of all its activities.
-        $FILTERLIB_PRIVATE = null;
+        filter_reset_request_cache();
         $modinfo = new \course_modinfo($course, 2);
         filter_preload_activities($modinfo);
         // Exercise SUT. filter_get_available_in_context should reuse that cached
@@ -632,6 +632,32 @@ final class filterlib_test extends \advanced_testcase {
         // Validate.
         $this->assertEquals($before, $after);
         $this->assert_one_available_filter('name', TEXTFILTER_OFF, TEXTFILTER_ON, $filters);
+    }
+
+    /**
+     * Test that changing the state of a filter midway through a request is
+     * reflected in the cached results of filter_get_active_in_context.
+     *
+     * @covers ::filter_set_global_state
+     * @covers ::filter_get_active_in_context
+     * @covers ::filter_preload_contexts
+     * @covers ::filter_reset_request_cache
+     */
+    public function test_set_global_state_invalidates_request_cache(): void {
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config(); // Remove all filters.
+        [
+            'childcontext2' => $childcontext2
+        ] = $this->setup_available_in_context_tests();
+
+        // Populate the request cache with no filters active.
+        $this->assertSame([], filter_get_active_in_context($childcontext2));
+
+        // Exercise SUT. Enabling a filter must be visible to the next call.
+        filter_set_global_state('name', TEXTFILTER_ON);
+
+        // Validate.
+        $this->assertSame(['name' => []], filter_get_active_in_context($childcontext2));
     }
 
     protected function setup_preload_activities_test() {
@@ -654,7 +680,7 @@ final class filterlib_test extends \advanced_testcase {
     }
 
     private function assert_matches($modinfo, $activity1context, $activity2context) {
-        global $FILTERLIB_PRIVATE, $DB;
+        global $DB;
 
         // Use preload cache...
         filter_preload_activities($modinfo);
@@ -667,7 +693,7 @@ final class filterlib_test extends \advanced_testcase {
         $this->assertEquals($before, $after);
 
         // Repeat without cache and check it makes queries now.
-        $FILTERLIB_PRIVATE = null;
+        filter_reset_request_cache();
         $before = $DB->perf_get_reads();
         $filters1 = filter_get_active_in_context($activity1context);
         $filters2 = filter_get_active_in_context($activity2context);
@@ -749,8 +775,6 @@ final class filterlib_test extends \advanced_testcase {
      * @covers ::filter_preload_activities
      */
     public function test_sorting_of_preload(): void {
-        global $FILTERLIB_PRIVATE;
-
         $this->resetAfterTest();
         $this->remove_all_filters_from_config();
         [
@@ -777,8 +801,8 @@ final class filterlib_test extends \advanced_testcase {
         $filters = filter_get_active_in_context($activity1context);
         $this->assertSame($expected, $filters);
 
-        // Clear cache.
-        $FILTERLIB_PRIVATE = null;
+        // Clear the request cache.
+        filter_reset_request_cache();
 
         // Test order of filters from course activities preload.
         $modinfo = new \course_modinfo($course, 2);
@@ -796,8 +820,6 @@ final class filterlib_test extends \advanced_testcase {
      * @covers ::filter_preload_activities
      */
     public function test_sorting_of_preload_with_course_override(): void {
-        global $FILTERLIB_PRIVATE;
-
         $this->resetAfterTest();
         $this->remove_all_filters_from_config();
         [
@@ -821,8 +843,8 @@ final class filterlib_test extends \advanced_testcase {
         $filters = filter_get_active_in_context($activity1context);
         $this->assertSame($expected, $filters);
 
-        // Clear cache.
-        $FILTERLIB_PRIVATE = null;
+        // Clear the request cache.
+        filter_reset_request_cache();
 
         // Test order of filters from course activities preload.
         $modinfo = new \course_modinfo($course, 2);
