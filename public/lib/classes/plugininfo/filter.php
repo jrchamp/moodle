@@ -162,6 +162,7 @@ class filter extends base {
 
         $DB->delete_records('filter_active', ['filter' => $this->name]);
         $DB->delete_records('filter_config', ['filter' => $this->name]);
+        filter_reset_request_cache();
 
         if (empty($CFG->filterall)) {
             $stringfilters = [];

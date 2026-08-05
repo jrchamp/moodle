@@ -40,6 +40,7 @@ foreach ($states as $state) {
         // Purge messy leftovers after incorrectly uninstalled plugins and unfinished installations.
         $DB->delete_records('filter_active', ['filter' => $state->filter]);
         $DB->delete_records('filter_config', ['filter' => $state->filter]);
+        filter_reset_request_cache();
         error_log('Deleted bogus "filter_'.$state->filter.'" states and config data.');
     } else {
         $filters[$state->filter] = $state;

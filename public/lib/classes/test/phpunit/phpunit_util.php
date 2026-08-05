@@ -98,7 +98,7 @@ class phpunit_util extends \core\test\testing_util {
      *      null  - only critical problems are reported as errors
      */
     public static function reset_all_data($detectchanges = false) {
-        global $DB, $CFG, $USER, $SITE, $COURSE, $PAGE, $OUTPUT, $SESSION, $FULLME, $FILTERLIB_PRIVATE;
+        global $DB, $CFG, $USER, $SITE, $COURSE, $PAGE, $OUTPUT, $SESSION, $FULLME;
 
         // Stop all hook redirections.
         \core\di::get(\core\hook\manager::class)->phpunit_stop_redirections();
@@ -201,7 +201,7 @@ class phpunit_util extends \core\test\testing_util {
         $FULLME = null;
         $ME = null;
         $SCRIPT = null;
-        $FILTERLIB_PRIVATE = null;
+        filter_reset_request_cache();
         if (!empty($SESSION->notifications)) {
             $SESSION->notifications = [];
         }
