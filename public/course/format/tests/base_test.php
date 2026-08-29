@@ -45,7 +45,7 @@ final class base_test extends advanced_testcase {
 
         $courseformatoptiondata = (object) [
             "hideoddsections" => 1,
-            'summary_editor' => [
+            'introtext_editor' => [
                 'text' => '<p>Somewhere over the rainbow</p><p>The <b>quick</b> brown fox jumpos over the lazy dog.</p>',
                 'format' => 1
             ]
@@ -60,7 +60,9 @@ final class base_test extends advanced_testcase {
 
         $savedcourseformatoptiondata = $courseformat->get_format_options();
 
-        $this->assertEqualsCanonicalizing($courseformatoptiondata, (object) $savedcourseformatoptiondata);
+        $this->assertEquals($courseformatoptiondata->hideoddsections, $savedcourseformatoptiondata['hideoddsections']);
+        $this->assertEquals($courseformatoptiondata->introtext_editor['text'], $savedcourseformatoptiondata['introtext']);
+        $this->assertEquals($courseformatoptiondata->introtext_editor['format'], $savedcourseformatoptiondata['introtextformat']);
     }
 
     public function test_available_hook(): void {
@@ -1134,6 +1136,88 @@ final class base_test extends advanced_testcase {
 
         $invalidate2cachekey = \core_courseformat\base::session_cache($course2);
         $this->assertEquals($course2cachekey, $invalidate2cachekey);
+    }
+
+    /**
+     * Test that get_format_options() returns expanded editor field values.
+     */
+    public function test_editor_default_value_is_scalar(): void {
+        $this->resetAfterTest();
+
+        // Create a course using the test format with editor defaults.
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course(['format' => 'theunittest']);
+        $this->assertEquals('theunittest', $course->format);
+
+        // Get format options - this should return scalar values for editor fields.
+        $courseformat = course_get_format($course);
+        $options = $courseformat->get_format_options();
+
+        // Verify the editor field default is split into two scalar entries.
+        $this->assertArrayNotHasKey('introtext_editor', $options);
+        $this->assertArrayHasKey('introtext', $options);
+        $this->assertEquals('', $options['introtext']);
+        $this->assertArrayHasKey('introtextformat', $options);
+        $this->assertEquals(FORMAT_HTML, $options['introtextformat']);
+    }
+
+    /**
+     * Test that get_format_options() expands saved editor values.
+     */
+    public function test_editor_saved_value_is_scalar(): void {
+        $this->resetAfterTest();
+
+        // Create a course using the test format.
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course(['format' => 'theunittest']);
+
+        // Save an editor value.
+        $courseformat = course_get_format($course);
+        $data = (object) [
+            'introtext_editor' => [
+                'text' => '<p>Saved custom text</p>',
+                'format' => FORMAT_HTML,
+            ],
+        ];
+        $courseformat->update_course_format_options($data);
+
+        // Get format options - this should return scalar values.
+        $options = $courseformat->get_format_options();
+
+        // Verify the editor field is split into two scalar entries.
+        $this->assertArrayNotHasKey('introtext_editor', $options);
+        $this->assertArrayHasKey('introtext', $options);
+        $this->assertStringContainsString('Saved custom text', $options['introtext']);
+        $this->assertArrayHasKey('introtextformat', $options);
+        $this->assertEquals(FORMAT_HTML, $options['introtextformat']);
+    }
+
+    /**
+     * Test that expand_value() splits editor arrays into scalar name/value pairs.
+     */
+    public function test_expand_value_for_editor_fields(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/course/format/lib.php');
+
+        // Test with editor option and array value - should split into two entries.
+        $option = ['default' => '', 'type' => PARAM_RAW];
+        $dest = ['customtext_editor' => ['text' => 'Test text', 'format' => FORMAT_HTML]];
+        expand_value($dest, $dest, $option, 'customtext_editor');
+        $this->assertArrayNotHasKey('customtext_editor', $dest);
+        $this->assertEquals('Test text', $dest['customtext']);
+        $this->assertEquals(FORMAT_HTML, $dest['customtextformat']);
+
+        // Test with non-editor option - should not modify value.
+        $dest = ['numsections' => 5];
+        expand_value($dest, $dest, $option, 'numsections');
+        $this->assertEquals(5, $dest['numsections']);
+        $this->assertArrayNotHasKey('numsectionsformat', $dest);
+
+        // Test with editor option and string value - should use string as text.
+        $dest = ['customtext_editor' => 'Plain string'];
+        expand_value($dest, $dest, $option, 'customtext_editor');
+        $this->assertEquals('Plain string', $dest['customtext']);
+        $this->assertEquals(1, $dest['customtextformat']); // Defaults to FORMAT_HTML.
     }
 }
 

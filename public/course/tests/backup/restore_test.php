@@ -613,7 +613,7 @@ final class restore_test extends \advanced_testcase {
         // Create a course with an editor item in the course format.
         $courseformatoptiondata = (object) [
             "hideoddsections" => 1,
-            'summary_editor' => [
+            'introtext_editor' => [
                 'text' => '<p>Somewhere over the rainbow</p><p>The <b>quick</b> brown fox jumpos over the lazy dog.</p>',
                 'format' => 1
             ]
@@ -635,6 +635,8 @@ final class restore_test extends \advanced_testcase {
         $restoredformat = course_get_format($course2);
         $restoredformatoptions = $restoredformat->get_format_options();
 
-        $this->assertEqualsCanonicalizing($courseformatoptiondata, (object) $restoredformatoptions);
+        $this->assertEquals($courseformatoptiondata->hideoddsections, $restoredformatoptions['hideoddsections']);
+        $this->assertEquals($courseformatoptiondata->introtext_editor['text'], $restoredformatoptions['introtext']);
+        $this->assertEquals($courseformatoptiondata->introtext_editor['format'], $restoredformatoptions['introtextformat']);
     }
 }

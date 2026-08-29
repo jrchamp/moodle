@@ -1338,6 +1338,10 @@ abstract class base {
                     contract_value($this->formatoptions[$sectionid], $indexedrecords, $option, $optionname);
                 }
             }
+            // Convert editor arrays to scalar name/value pairs.
+            foreach ($options as $optionname => $option) {
+                expand_value($this->formatoptions[$sectionid], $this->formatoptions[$sectionid], $option, $optionname);
+            }
         }
         return $this->formatoptions[$sectionid];
     }
@@ -1494,7 +1498,14 @@ abstract class base {
                 $defaultoptions[$key] = $option['default'];
             }
             expand_value($defaultoptions, $defaultoptions, $option, $key);
-            $cached[$key] = ($sectionid === 0 || !empty($option['cache']));
+            $iscached = ($sectionid === 0 || !empty($option['cache']));
+            $cached[$key] = $iscached;
+            if (substr($key, -7) === '_editor') {
+                // Editor options expand into <name> and <name>format; cache those too.
+                $name = substr($key, 0, -7);
+                $cached[$name] = $iscached;
+                $cached[$name . 'format'] = $iscached;
+            }
         }
         $records = $DB->get_records('course_format_options',
                 array('courseid' => $this->courseid,

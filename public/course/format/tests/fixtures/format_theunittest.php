@@ -37,7 +37,7 @@ class format_theunittest extends core_courseformat\base {
                     'default' => 0,
                     'type' => PARAM_INT,
                 ),
-                'summary_editor' => array(
+                'introtext_editor' => array(
                     'default' => '',
                     'type' => PARAM_RAW,
                 ),
@@ -55,8 +55,8 @@ class format_theunittest extends core_courseformat\base {
                     'element_type' => 'select',
                     'element_attributes' => array($sectionmenu),
                 ),
-                'summary_editor' => array(
-                    'label' => 'Summary Text',
+                'introtext_editor' => array(
+                    'label' => 'Intro Text',
                     'element_type' => 'editor',
                 ),
             );
