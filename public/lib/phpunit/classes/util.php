@@ -174,7 +174,7 @@ class phpunit_util extends testing_util {
                 $warnings[] = 'Warning: unexpected change of $FULLME';
             }
 
-            if (setlocale(LC_TIME, 0) !== $localename) {
+            if (setlocale(LC_TIME, '0') !== $localename) {
                 $warnings[] = 'Warning: unexpected change of locale';
             }
         }
