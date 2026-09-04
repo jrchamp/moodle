@@ -69,4 +69,32 @@ final class navigation_node_collection_test extends navigation_testcase {
         // Test it's empty again!
         $this->assertEquals(0, count($navigationnodecollection->get_key_list()));
     }
+
+    public function test_add_without_key_or_type_uses_empty_string_fallback(): void {
+        $navigationnodecollection = new navigation_node_collection();
+        $node = new navigation_node('Test node');
+        $navigationnodecollection->add($node);
+        $this->assertCount(1, $navigationnodecollection->get_key_list());
+        $this->assertSame($node, $navigationnodecollection->get('', ''));
+
+        // The fallback should be noticed by developers, so both the missing key
+        // and the missing type are reported.
+        $this->assertDebuggingCalledCount(2, [
+            'Navigation node add: Node key should not be null',
+            'Navigation node add: Node type should not be null',
+        ]);
+    }
+
+    public function test_add_with_key_but_no_type_reports_only_missing_type(): void {
+        $navigationnodecollection = new navigation_node_collection();
+        $node = new navigation_node(['text' => 'Test node', 'key' => 'demo', 'type' => null]);
+        $navigationnodecollection->add($node);
+        $this->assertCount(1, $navigationnodecollection->get_key_list());
+        $this->assertSame($node, $navigationnodecollection->get('demo', ''));
+
+        // With the key set, only the missing type is reported.
+        $this->assertDebuggingCalledCount(1, [
+            'Navigation node add: Node type should not be null',
+        ]);
+    }
 }
