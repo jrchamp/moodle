@@ -360,6 +360,153 @@ final class logger_test extends \basic_testcase {
         // Remove the test dir and any content
         @remove_dir(dirname($file));
     }
+
+    /**
+     * Test the file_logger __serialise/__unserialise round-trip (MDL-89053).
+     *
+     * The handle must be closed for serialisation, the level/date/level flags
+     * and the full path must survive the round-trip, and the file must be
+     * reopened so that logging can continue.
+     *
+     * @covers \file_logger
+     */
+    public function test_file_logger_serialise_unserialise_roundtrip(): void {
+        global $CFG;
+
+        $file = $CFG->tempdir . '/test/test_file_logger_serialise.txt';
+        @remove_dir(dirname($file));
+        if (!check_dir_exists(dirname($file), true, true)) {
+            throw new \moodle_exception('error_creating_temp_dir', 'error', dirname($file));
+        }
+
+        $lo = new file_logger(backup::LOG_ERROR, true, true, $file);
+        $this->assertTrue($lo->process('first message', backup::LOG_ERROR));
+
+        // __serialise() must close the file handle before returning the payload.
+        $blob = serialize($lo);
+        $fullpath = new \ReflectionProperty(file_logger::class, 'fullpath');
+        $fhandle = new \ReflectionProperty(file_logger::class, 'fhandle');
+        $this->assertNull($fhandle->getValue($lo));
+
+        // __unserialise() must restore the state and reopen the file.
+        $copy = unserialize($blob);
+        $this->assertInstanceOf(file_logger::class, $copy);
+        $level = new \ReflectionProperty(base_logger::class, 'level');
+        $showdate = new \ReflectionProperty(base_logger::class, 'showdate');
+        $showlevel = new \ReflectionProperty(base_logger::class, 'showlevel');
+        $this->assertSame(backup::LOG_ERROR, $level->getValue($copy));
+        $this->assertTrue($showdate->getValue($copy));
+        $this->assertTrue($showlevel->getValue($copy));
+        $this->assertSame($file, $fullpath->getValue($copy));
+        $this->assertIsResource($fhandle->getValue($copy));
+
+        // The resumed logger is still able to log into the same file.
+        $this->assertTrue($copy->process('second message', backup::LOG_ERROR));
+        $copy->destroy();
+
+        $contents = file_get_contents($file);
+        $this->assertStringContainsString('first message', $contents);
+        $this->assertStringContainsString('second message', $contents);
+
+        @unlink($file);
+        @remove_dir(dirname($file));
+    }
+
+    /**
+     * Test that file_logger __unserialise() reconstructs the log path when the
+     * original directory no longer exists (MDL-89053).
+     *
+     * @covers \file_logger
+     */
+    public function test_file_logger_unserialise_reconstructs_missing_path(): void {
+        global $CFG;
+
+        $file = $CFG->tempdir . '/test_file_logger_serialise_missing/backup.log';
+        @remove_dir(dirname($file));
+        if (!check_dir_exists(dirname($file), true, true)) {
+            throw new \moodle_exception('error_creating_temp_dir', 'error', dirname($file));
+        }
+
+        $lo = new file_logger(backup::LOG_ERROR, false, false, $file);
+        $blob = serialize($lo);
+
+        // Simulate the original backup temp dir having been purged while the
+        // object was stored serialised.
+        @remove_dir(dirname($file));
+
+        $copy = unserialize($blob);
+
+        $fullpath = new \ReflectionProperty(file_logger::class, 'fullpath');
+        $fhandle = new \ReflectionProperty(file_logger::class, 'fhandle');
+
+        $reconstructed = $fullpath->getValue($copy);
+        $this->assertNotSame($file, $reconstructed);
+        $this->assertSame(rtrim(make_backup_temp_directory(''), '/'), dirname($reconstructed));
+        $this->assertIsResource($fhandle->getValue($copy));
+
+        $copy->destroy();
+        @unlink($reconstructed);
+    }
+
+    /**
+     * Test that a legacy __sleep()-format payload (i.e. a blob written before
+     * the __serialize()/__unserialize() migration) restores a file_logger that
+     * can still write to its file (MDL-89053).
+     *
+     * The old __sleep() let the engine serialise the protected properties
+     * (level, showdate, showlevel, next, fullpath) under PHP's mangled keys
+     * (e.g. "\0*\0level"). Such blobs outlive the deployment (backup_controller
+     * rows, ...), so __unserialize() must tolerate them instead of silently
+     * nulling every property and dropping the log output.
+     *
+     * @covers \file_logger
+     */
+    public function test_file_logger_unserialise_tolerates_legacy_sleep_blob(): void {
+        global $CFG;
+
+        $file = $CFG->tempdir . '/test/test_file_logger_legacy.txt';
+        @remove_dir(dirname($file));
+        if (!check_dir_exists(dirname($file), true, true)) {
+            throw new \moodle_exception('error_creating_temp_dir', 'error', dirname($file));
+        }
+
+        $copy = unserialize($this->legacy_sleep_blob(\file_logger::class, [
+            "\0*\0level" => backup::LOG_ERROR,
+            "\0*\0showdate" => true,
+            "\0*\0showlevel" => true,
+            "\0*\0next" => null,
+            "\0*\0fullpath" => $file,
+        ]));
+
+        $this->assertInstanceOf(\file_logger::class, $copy);
+        $this->assertTrue($copy->process('legacy message', backup::LOG_ERROR));
+        $copy->destroy();
+
+        $this->assertStringContainsString('legacy message', file_get_contents($file));
+
+        @unlink($file);
+        @remove_dir(dirname($file));
+    }
+
+    /**
+     * Build a serialized object blob in the old __sleep() wire format.
+     *
+     * When a class relied on __sleep(), the engine serialised each listed
+     * property verbatim under its own (mangled) key, so the payload only ever
+     * contained the keys in $props. Re-wrapping serialize()d values with an
+     * explicit O: object header reproduces that format exactly.
+     *
+     * @param string $class fully qualified class name to instantiate
+     * @param array $props map of serialized key name (e.g. "\0*\0name") to value
+     * @return string the serialized blob
+     */
+    private static function legacy_sleep_blob(string $class, array $props): string {
+        $blob = 'O:' . strlen($class) . ':"' . $class . '":' . count($props) . ':{';
+        foreach ($props as $key => $value) {
+            $blob .= 's:' . strlen($key) . ':"' . $key . '";' . serialize($value);
+        }
+        return $blob . '}';
+    }
 }
 
 
