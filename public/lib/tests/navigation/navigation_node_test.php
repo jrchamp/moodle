@@ -21,6 +21,8 @@ use core\output\actions\popup_action;
 use core\output\pix_icon;
 use core\tests\navigation\navigation_testcase;
 
+require_once(__DIR__ . '/../fixtures/serialisable_navigation_node.php');
+
 /**
  * Tests for navigation_node.
  *
@@ -458,5 +460,59 @@ final class navigation_node_test extends navigation_testcase {
                     navigation_node::create('Node', new \moodle_url('/'), navigation_node::TYPE_SETTING),
                 ],
         ];
+    }
+
+    /**
+     * Test that a nav node serialise/unserialise round-trip preserves the node
+     * state while re-initialising the page-specific state (MDL-89053).
+     *
+     * @covers \navigation_node::__unserialize
+     */
+    public function test_node_serialise_unserialise_roundtrip(): void {
+        $node = new navigation_node(['text' => 'mytext', 'key' => 'mykey']);
+        $node->forceopen = true;
+        $node->isactive = true;
+        $node->add_class('myclass');
+        $node->add_class('active_tree_node');
+        $node->add_node(new navigation_node(['text' => 'child', 'key' => 'childkey']));
+
+        $copy = unserialize(serialize($node));
+
+        $this->assertInstanceOf(navigation_node::class, $copy);
+
+        // Provided node state survives the round-trip, exercised through the
+        // public API where one exists.
+        $this->assertSame('mytext', $copy->get_content());
+        $this->assertSame('mykey', $copy->key);
+        $this->assertTrue($copy->has_children());
+        $this->assertSame('child', $copy->find('childkey', navigation_node::TYPE_CUSTOM)->get_content());
+        $this->assertContains('myclass', $copy->classes);
+
+        // Page-specific state is re-initialised on unserialisation.
+        $this->assertFalse($copy->forceopen);
+        $this->assertFalse($copy->isactive);
+        $this->assertNotContains('active_tree_node', $copy->classes);
+    }
+
+    /**
+     * Test that a navigation_node subclass keeps its protected/private state
+     * through a serialise/unserialise round-trip (MDL-89053).
+     *
+     * navigation_node is a base class for many core and plugin subclasses that
+     * hold protected/private state; __unserialize() must restore it. The state
+     * is asserted through the public getters on the test-fixture class, so the
+     * test exercises the restored object's behaviour, not its internals.
+     *
+     * @covers \navigation_node::__unserialize
+     */
+    public function test_node_serialise_unserialise_preserves_subclass_state(): void {
+        $node = new serialisable_navigation_node(['text' => 'something']);
+        $node->set_protecteddata('CHANGED-protected');
+        $node->set_privatedata('CHANGED-private');
+
+        $copy = unserialize(serialize($node));
+
+        $this->assertSame('CHANGED-protected', $copy->get_protecteddata());
+        $this->assertSame('CHANGED-private', $copy->get_privatedata());
     }
 }
