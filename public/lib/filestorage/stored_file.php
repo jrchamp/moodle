@@ -111,8 +111,15 @@ class stored_file {
      * @param array $data Array of object properties.
      */
     public function __unserialize(array $data): void {
+        // Normalize keys for backward compatibility with pre-upgrade serialized data.
+        $normalised = [];
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $normalised[end($parts)] = $value;
+        }
+
         // Recreate our stored_file based on the file_record, and using file storage retrieved the correct way.
-        $this->file_record = $data['file_record'];
+        $this->file_record = $normalised['file_record'] ?? null;
         $this->__construct(get_file_storage(), $this->file_record);
     }
 

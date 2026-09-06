@@ -265,9 +265,16 @@ class lang_string {
      * @param array $data Array of object properties.
      */
     public function __unserialize(array $data): void {
-        $this->forcedstring = $data['forcedstring'];
-        $this->string = $data['string'];
-        $this->lang = $data['lang'] ?? null;
+        // Normalize keys for backward compatibility with pre-upgrade serialized data.
+        $normalised = [];
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $normalised[end($parts)] = $value;
+        }
+
+        $this->forcedstring = $normalised['forcedstring'] ?? false;
+        $this->string = $normalised['string'] ?? null;
+        $this->lang = $normalised['lang'] ?? null;
     }
 
     /**

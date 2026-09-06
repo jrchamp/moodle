@@ -82,7 +82,14 @@ class file_logger extends base_logger {
      * @param array $data Array of object properties.
      */
     public function __unserialize(array $data): void {
-        $this->fullpath = $data['fullpath'] ?? null;
+        // Normalize keys for backward compatibility with pre-upgrade serialized data.
+        $normalised = [];
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $normalised[end($parts)] = $value;
+        }
+
+        $this->fullpath = $normalised['fullpath'] ?? null;
         // If the stored path no longer exists, reconstruct it using the current backup temp dir.
         if (!empty($this->fullpath) && !file_exists(dirname($this->fullpath))) {
             $filename = basename($this->fullpath);
@@ -90,10 +97,10 @@ class file_logger extends base_logger {
             $this->fullpath = $backuptempdir . '/' . $filename;
         }
 
-        $this->level = $data['level'];
-        $this->showdate = $data['showdate'];
-        $this->showlevel = $data['showlevel'];
-        $this->next = $data['next'];
+        $this->level = $normalised['level'] ?? null;
+        $this->showdate = $normalised['showdate'] ?? null;
+        $this->showlevel = $normalised['showlevel'] ?? null;
+        $this->next = $normalised['next'] ?? null;
 
         if ($this->level > backup::LOG_NONE) { // Only create the file if we are going to log something
             if (! $this->fhandle = fopen($this->fullpath, 'a')) {

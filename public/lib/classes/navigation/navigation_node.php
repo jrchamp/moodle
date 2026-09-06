@@ -628,6 +628,8 @@ class navigation_node implements renderable {
      */
     public function __unserialize(array $data): void {
         foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $name = end($parts);
             if (property_exists($this, $name)) {
                 $this->$name = $value;
             }
