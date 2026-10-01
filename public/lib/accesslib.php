@@ -392,22 +392,7 @@ function get_role_definitions(array $roleids) {
 
     // Grab all keys we have not yet got in our static cache.
     if ($uncached = array_diff($roleids, array_keys($ACCESSLIB_PRIVATE->cacheroledefs))) {
-        $revisions = accesslib_get_role_cacherevs();
-        $cache = cache::make('core', 'roledefs');
-        $missing = [];
-        foreach ($uncached as $roleid) {
-            // Without revisions (install/upgrade) the MUC cannot be used safely.
-            $cachedroledef = $revisions === null ? false : $cache->get_versioned($roleid, $revisions[$roleid] ?? 0);
-            if (is_array($cachedroledef)) {
-                $ACCESSLIB_PRIVATE->cacheroledefs[$roleid] = $cachedroledef;
-            } else {
-                $missing[] = $roleid;
-            }
-        }
-
-        if ($missing) {
-            $ACCESSLIB_PRIVATE->cacheroledefs += accesslib_build_role_definitions($missing, $revisions);
-        }
+        $ACCESSLIB_PRIVATE->cacheroledefs += accesslib_build_role_definitions($uncached);
     }
 
     // Return just the roles we need.
@@ -415,29 +400,32 @@ function get_role_definitions(array $roleids) {
 }
 
 /**
- * Builds role definitions from the database and stores them in the MUC. ONLY TO BE USED FROM THIS LIBRARY FILE!
+ * Loads role definitions from the MUC, building and storing missing ones. ONLY TO BE USED FROM THIS LIBRARY FILE!
  *
- * Only one process builds a definition at a time: the lock is requested without waiting. Processes which do not
- * get the lock do not queue for it, they poll the cache until the definition shows up, so they can all read it
- * in parallel. They try the lock again on each poll, which covers local-only cache stores where the definition built
- * by another node never becomes visible. After ACCESSLIB_ROLEDEFS_LOCK_TIMEOUT the definition is built without lock,
- * the lock is only an optimisation because the cached data is protected by the role revision.
+ * Only one process builds a definition at a time: on a cache miss the lock is requested without waiting. Processes
+ * which do not get the lock do not queue for it, they poll the cache until the definition shows up, so they can all
+ * read it in parallel. They try the lock again on each poll, which covers local-only cache stores where the definition
+ * built by another node never becomes visible. After ACCESSLIB_ROLEDEFS_LOCK_TIMEOUT the definition is built without
+ * lock, the lock is only an optimisation because the cached data is protected by the role revision.
  *
- * @param array $roleids List of role ids to build definitions for.
- * @param array|null $revisions Role revisions, roleid => revision, null if revisions are not available (install/upgrade).
+ * @param array $roleids List of role ids to load definitions for.
  * @return array Complete definition for each requested role.
  */
-function accesslib_build_role_definitions(array $roleids, ?array $revisions): array {
+function accesslib_build_role_definitions(array $roleids): array {
     global $DB;
 
-    if ($revisions === null || $DB->is_transaction_started()) {
-        // Without revisions the MUC cannot be used safely. Within a transaction the data may contain uncommitted
-        // changes that could still be rolled back, so do not share it via MUC.
+    $revisions = accesslib_get_role_cacherevs();
+    if ($revisions === null) {
+        // Without revisions (install/upgrade) the MUC cannot be used safely.
         return get_role_definitions_uncached($roleids);
     }
 
+    // Within a transaction the built data may contain uncommitted changes that could still be rolled back, so it is
+    // neither locked nor stored. Reading is safe, the MUC only contains committed data.
+    $intransaction = $DB->is_transaction_started();
     $cache = cache::make('core', 'roledefs');
-    $lockfactory = \core\lock\lock_config::get_lock_factory('core_roledefs');
+    // Only created on a cache miss, as some lock factories connect to their backend on creation.
+    $lockfactory = null;
     $giveuptime = hrtime(true) + ACCESSLIB_ROLEDEFS_LOCK_TIMEOUT * 1000000000;
     // Keyed by role id, so that role ids can be removed and merged without reindexing.
     $pending = array_combine($roleids, $roleids);
@@ -448,24 +436,31 @@ function accesslib_build_role_definitions(array $roleids, ?array $revisions): ar
         $tobuild = [];
         try {
             foreach ($pending as $roleid) {
-                // Never wait for the lock. As no process waits while holding a lock, this cannot deadlock.
-                if ($lock = $lockfactory->get_lock('roledef_' . $roleid, 0)) {
-                    $locks[] = $lock;
+                $revision = $revisions[$roleid] ?? 0;
+                $cachedroledef = $cache->get_versioned($roleid, $revision);
+                if (!is_array($cachedroledef) && !$intransaction) {
+                    $lockfactory ??= \core\lock\lock_config::get_lock_factory('core_roledefs');
+                    // Never wait for the lock. As no process waits while holding a lock, this cannot deadlock.
+                    if ($lock = $lockfactory->get_lock('roledef_' . $roleid, 0)) {
+                        $locks[] = $lock;
+                        // Look into the cache again: another process may have stored it and released the lock meanwhile.
+                        $cachedroledef = $cache->get_versioned($roleid, $revision);
+                        if (!is_array($cachedroledef)) {
+                            $tobuild[$roleid] = $roleid;
+                            unset($pending[$roleid]);
+                        }
+                    }
                 }
 
-                // Look into the cache again: another process may have stored the definition in the meantime.
-                $cachedroledef = $cache->get_versioned($roleid, $revisions[$roleid] ?? 0);
                 if (is_array($cachedroledef)) {
                     $rdefs[$roleid] = $cachedroledef;
-                    unset($pending[$roleid]);
-                } else if ($lock) {
-                    $tobuild[$roleid] = $roleid;
                     unset($pending[$roleid]);
                 }
             }
 
-            if ($pending && hrtime(true) >= $giveuptime) {
-                // The other process takes too long or has died, build the remaining definitions without lock.
+            if ($pending && ($intransaction || hrtime(true) >= $giveuptime)) {
+                // Within a transaction nothing is stored, so there is nothing to wait for. Otherwise the other process
+                // takes too long or has died, build the remaining definitions without lock.
                 $tobuild += $pending;
                 $pending = [];
             }
@@ -473,13 +468,15 @@ function accesslib_build_role_definitions(array $roleids, ?array $revisions): ar
             if ($tobuild) {
                 // The revisions have been read before the definitions, so the stored data is at least as new as the revision.
                 $built = get_role_definitions_uncached($tobuild);
-                // The revisions may be outdated by now, so do not overwrite a newer entry stored by another process.
-                [$insql, $params] = $DB->get_in_or_equal(array_keys($built), SQL_PARAMS_NAMED);
-                $currentrevisions = $DB->get_records_select_menu('role', "id $insql", $params, '', 'id, cacherev');
-                foreach ($built as $roleid => $rdef) {
-                    $revision = $revisions[$roleid] ?? 0;
-                    if (isset($currentrevisions[$roleid]) && (int) $currentrevisions[$roleid] === $revision) {
-                        $cache->set_versioned($roleid, $revision, $rdef);
+                if (!$intransaction) {
+                    // The revisions may be outdated by now, so do not overwrite a newer entry stored by another process.
+                    [$insql, $params] = $DB->get_in_or_equal(array_keys($built), SQL_PARAMS_NAMED);
+                    $currentrevisions = $DB->get_records_select_menu('role', "id $insql", $params, '', 'id, cacherev');
+                    foreach ($built as $roleid => $rdef) {
+                        $revision = $revisions[$roleid] ?? 0;
+                        if (isset($currentrevisions[$roleid]) && (int) $currentrevisions[$roleid] === $revision) {
+                            $cache->set_versioned($roleid, $revision, $rdef);
+                        }
                     }
                 }
                 $rdefs += $built;

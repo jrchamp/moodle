@@ -2517,6 +2517,31 @@ final class accesslib_test extends advanced_testcase {
     }
 
     /**
+     * Test that role definitions are read from the MUC within a transaction.
+     *
+     * @covers ::get_role_definitions
+     */
+    public function test_role_definition_read_from_cache_in_transaction(): void {
+        global $ACCESSLIB_PRIVATE, $DB;
+
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+
+        $studentrole = $DB->get_record('role', ['shortname' => 'student'], '*', MUST_EXIST);
+        accesslib_reset_role_cache();
+        $cache = cache::make('core', 'roledefs');
+        $fakedefinition = ['/1' => ['moodle/site:config' => CAP_ALLOW]];
+        $cache->set_versioned($studentrole->id, accesslib_get_role_cacherevs()[$studentrole->id], $fakedefinition);
+        $ACCESSLIB_PRIVATE->cacheroledefs = [];
+
+        $transaction = $DB->start_delegated_transaction();
+        $rdefs = get_role_definitions([$studentrole->id]);
+        $transaction->allow_commit();
+
+        $this->assertEquals([$studentrole->id => $fakedefinition], $rdefs);
+    }
+
+    /**
      * Test that a process not getting the lock uses the definition stored by the process holding the lock.
      *
      * @covers ::accesslib_build_role_definitions
@@ -2539,7 +2564,7 @@ final class accesslib_test extends advanced_testcase {
         try {
             // The process holding the lock has stored the definition in the meantime.
             $cache->set_versioned($studentrole->id, $revisions[$studentrole->id], $fakedefinition);
-            $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions);
+            $rdefs = accesslib_build_role_definitions([$studentrole->id]);
         } finally {
             $lock->release();
         }
@@ -2570,7 +2595,7 @@ final class accesslib_test extends advanced_testcase {
         $this->assertNotFalse($lock);
         try {
             $start = hrtime(true);
-            $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions);
+            $rdefs = accesslib_build_role_definitions([$studentrole->id]);
             $elapsed = (hrtime(true) - $start) / 1000000000;
         } finally {
             $lock->release();
@@ -2600,7 +2625,7 @@ final class accesslib_test extends advanced_testcase {
         // Another process changes the role after the revisions have been loaded.
         $DB->set_field('role', 'cacherev', $revisions[$studentrole->id] + 1, ['id' => $studentrole->id]);
 
-        $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions);
+        $rdefs = accesslib_build_role_definitions([$studentrole->id]);
 
         $this->assertEquals(get_role_definitions_uncached([$studentrole->id]), $rdefs);
         $this->assertFalse($cache->get_versioned($studentrole->id, $revisions[$studentrole->id]));
