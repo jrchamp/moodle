@@ -2357,21 +2357,21 @@ final class accesslib_test extends advanced_testcase {
 
         // Now load some role definitions, and check when it queries the database.
 
-        // Load the capabilities for two roles. Should be one simple query for the role revisions
-        // and one recordset query for the role definitions.
+        // Load the capabilities for two roles. Should be one simple query for the role revisions,
+        // one recordset query for the role definitions and one simple query to recheck the revisions before storing.
         $startdbreads = $DB->perf_get_reads();
         get_role_definitions([$authenticatedrole->id, $studentrole->id]);
-        $this->assertEquals(1 + 1 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
+        $this->assertEquals(2 + 1 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
 
         // Load the capabilities for same two roles. Should not query the DB.
         $startdbreads = $DB->perf_get_reads();
         get_role_definitions([$authenticatedrole->id, $studentrole->id]);
         $this->assertEquals(0 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
 
-        // Include a third role. Should do one DB query.
+        // Include a third role. Should do one recordset query and one simple query to recheck the revision.
         $startdbreads = $DB->perf_get_reads();
         get_role_definitions([$authenticatedrole->id, $studentrole->id, $emptyroleid]);
-        $this->assertEquals(1 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
+        $this->assertEquals(1 + 1 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
 
         // Repeat call. No DB queries.
         $startdbreads = $DB->perf_get_reads();
@@ -2384,7 +2384,7 @@ final class accesslib_test extends advanced_testcase {
         // Should now know to reload the role revisions and the altered role definition.
         $startdbreads = $DB->perf_get_reads();
         get_role_definitions([$authenticatedrole->id, $studentrole->id]);
-        $this->assertEquals(1 + 1 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
+        $this->assertEquals(2 + 1 * $readsperquery, $DB->perf_get_reads() - $startdbreads);
 
         // Now clear the in-memory cache, and verify that it does not query the DB.
         // Cannot use accesslib_clear_all_caches_for_unit_testing since that also
@@ -2539,7 +2539,7 @@ final class accesslib_test extends advanced_testcase {
         try {
             // The process holding the lock has stored the definition in the meantime.
             $cache->set_versioned($studentrole->id, $revisions[$studentrole->id], $fakedefinition);
-            $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions, $cache);
+            $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions);
         } finally {
             $lock->release();
         }
@@ -2566,21 +2566,44 @@ final class accesslib_test extends advanced_testcase {
         $cache = cache::make('core', 'roledefs');
         $expected = get_role_definitions_uncached([$studentrole->id]);
 
-        // Each call to the clock advances the time by one second, so the lock timeout is reached after a few polls.
-        $clock = $this->mock_clock_with_incrementing();
-        $start = $clock->time();
-
         $lock = \core\lock\lock_config::get_lock_factory('core_roledefs')->get_lock('roledef_' . $studentrole->id, 0);
         $this->assertNotFalse($lock);
         try {
-            $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions, $cache);
+            $start = hrtime(true);
+            $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions);
+            $elapsed = (hrtime(true) - $start) / 1000000000;
         } finally {
             $lock->release();
         }
 
         $this->assertEquals($expected, $rdefs);
-        $this->assertGreaterThanOrEqual($start + ACCESSLIB_ROLEDEFS_LOCK_TIMEOUT, $clock->time());
+        $this->assertGreaterThanOrEqual(ACCESSLIB_ROLEDEFS_LOCK_TIMEOUT, $elapsed);
         $this->assertEquals($expected[$studentrole->id], $cache->get_versioned($studentrole->id, $revisions[$studentrole->id]));
+    }
+
+    /**
+     * Test that a definition built with outdated revisions is not stored, so it cannot overwrite a newer cache entry.
+     *
+     * @covers ::accesslib_build_role_definitions
+     */
+    public function test_build_role_definitions_does_not_store_outdated_revision(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+
+        $studentrole = $DB->get_record('role', ['shortname' => 'student'], '*', MUST_EXIST);
+        accesslib_reset_role_cache();
+        $revisions = accesslib_get_role_cacherevs();
+        $cache = cache::make('core', 'roledefs');
+
+        // Another process changes the role after the revisions have been loaded.
+        $DB->set_field('role', 'cacherev', $revisions[$studentrole->id] + 1, ['id' => $studentrole->id]);
+
+        $rdefs = accesslib_build_role_definitions([$studentrole->id], $revisions);
+
+        $this->assertEquals(get_role_definitions_uncached([$studentrole->id]), $rdefs);
+        $this->assertFalse($cache->get_versioned($studentrole->id, $revisions[$studentrole->id]));
     }
 
 
