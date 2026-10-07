@@ -342,6 +342,8 @@ final class datalib_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
 
+        $revisionmultiplier = 10000;
+
         // Use one of the fields that are used with increment_revision_number().
         $course1 = $this->getDataGenerator()->create_course();
         $course2 = $this->getDataGenerator()->create_course();
@@ -357,33 +359,34 @@ final class datalib_test extends \advanced_testcase {
         increment_revision_number('course', 'cacherev', 'id = :id', array('id'=>$course1->id));
         $record1 = $DB->get_record('course', array('id'=>$course1->id));
         $record2 = $DB->get_record('course', array('id'=>$course2->id));
-        $this->assertTimeCurrent($record1->cacherev);
+        $this->assertTimeCurrent($record1->cacherev / $revisionmultiplier);
         $this->assertEquals(1, $record2->cacherev);
 
         // Incrementing in the same second.
         $rev1 = $DB->get_field('course', 'cacherev', array('id'=>$course1->id));
         $now = time();
-        $DB->set_field('course', 'cacherev', $now, array('id'=>$course1->id));
+        $DB->set_field('course', 'cacherev', $now * $revisionmultiplier, array('id'=>$course1->id));
         increment_revision_number('course', 'cacherev', 'id = :id', array('id'=>$course1->id));
         $rev2 = $DB->get_field('course', 'cacherev', array('id'=>$course1->id));
         $this->assertGreaterThan($rev1, $rev2);
         increment_revision_number('course', 'cacherev', 'id = :id', array('id'=>$course1->id));
         $rev3 = $DB->get_field('course', 'cacherev', array('id'=>$course1->id));
         $this->assertGreaterThan($rev2, $rev3);
-        $this->assertGreaterThan($now+1, $rev3);
+        $this->assertGreaterThan(($now+1) * $revisionmultiplier, $rev3);
         increment_revision_number('course', 'cacherev', 'id = :id', array('id'=>$course1->id));
         $rev4 = $DB->get_field('course', 'cacherev', array('id'=>$course1->id));
         $this->assertGreaterThan($rev3, $rev4);
-        $this->assertGreaterThan($now+2, $rev4);
+        $this->assertGreaterThan(($now+2) * $revisionmultiplier, $rev4);
 
         // Recovering from runaway revision.
-        $DB->set_field('course', 'cacherev', time()+60*60*60, array('id'=>$course2->id));
+        $DB->set_field('course', 'cacherev', (time() - 21) * $revisionmultiplier + 60*60*60, array('id'=>$course2->id));
         $record2 = $DB->get_record('course', array('id'=>$course2->id));
-        $this->assertGreaterThan(time(), $record2->cacherev);
+        $this->assertGreaterThan(time() * $revisionmultiplier, $record2->cacherev);
+        sleep(1);
         $this->setCurrentTimeStart();
         increment_revision_number('course', 'cacherev', 'id = :id', array('id'=>$course2->id));
         $record2b = $DB->get_record('course', array('id'=>$course2->id));
-        $this->assertTimeCurrent($record2b->cacherev);
+        $this->assertTimeCurrent($record2b->cacherev / $revisionmultiplier);
 
         // Update all revisions.
         $DB->set_field('course', 'cacherev', 1, array());
@@ -391,7 +394,7 @@ final class datalib_test extends \advanced_testcase {
         increment_revision_number('course', 'cacherev', '');
         $record1 = $DB->get_record('course', array('id'=>$course1->id));
         $record2 = $DB->get_record('course', array('id'=>$course2->id));
-        $this->assertTimeCurrent($record1->cacherev);
+        $this->assertTimeCurrent($record1->cacherev / $revisionmultiplier);
         $this->assertEquals($record1->cacherev, $record2->cacherev);
     }
 
