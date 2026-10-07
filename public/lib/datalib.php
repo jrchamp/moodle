@@ -1163,9 +1163,8 @@ function get_scales_menu($courseid=0) {
 /**
  * Increment standard revision field.
  *
- * The revision are based on current time and are incrementing.
- * There is a protection for runaway revisions, it may not go further than
- * one hour into future.
+ * The revision is based on current time and is monotonic (only increasing).
+ * To mitigate runaway revisions, current time is multiplied.
  *
  * The field has to be XMLDB_TYPE_INTEGER with size 10.
  *
@@ -1177,12 +1176,11 @@ function get_scales_menu($courseid=0) {
 function increment_revision_number($table, $field, $select, ?array $params = null) {
     global $DB;
 
-    $now = time();
+    $now = \core\di::get(\core\clock::class)->time() * 10000;
     $sql = "UPDATE {{$table}}
                    SET $field = (CASE
                        WHEN $field IS NULL THEN $now
                        WHEN $field < $now THEN $now
-                       WHEN $field > $now + 3600 THEN $now
                        ELSE $field + 1 END)";
     if ($select) {
         $sql = $sql . " WHERE $select";
