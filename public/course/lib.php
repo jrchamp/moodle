@@ -1565,7 +1565,9 @@ function move_courses($courseids, $categoryid) {
 
     $courseids = array_reverse($courseids);
     $newparent = context_coursecat::instance($category->id);
-    $i = 1;
+
+    // Free sortorder values, taken from the end so that $courseids keeps its order.
+    $sortorders = get_free_course_sortorders($category->id, count($courseids));
 
     list($where, $params) = $DB->get_in_or_equal($courseids);
     $dbcourses = $DB->get_records_select('course', 'id ' . $where, $params, '', 'id, category, shortname, fullname');
@@ -1574,7 +1576,7 @@ function move_courses($courseids, $categoryid) {
         $course->id = $dbcourse->id;
         $course->timemodified = time();
         $course->category  = $category->id;
-        $course->sortorder = $category->sortorder + get_max_courses_in_category() - $i++;
+        $course->sortorder = array_pop($sortorders);
         if ($category->visible == 0) {
             // Hide the course when moving into hidden category, do not update the visibleold flag - we want to get
             // to previous state if somebody unhides the category.
@@ -1804,8 +1806,8 @@ function create_course($data, $editoroptions = NULL) {
     $data->timecreated  = !empty($data->timecreated) ? $data->timecreated : time();
     $data->timemodified = $data->timecreated;
 
-    // place at beginning of any category
-    $data->sortorder = 0;
+    // A free sortorder, so that no course has to be shifted.
+    $data->sortorder = get_free_course_sortorders($data->category)[0];
 
     if ($editoroptions) {
         // summary text is updated later, we need context to store the files first
@@ -2717,27 +2719,43 @@ function course_change_sortorder_after_course($courseorid, $moveaftercourseid) {
         $course = $courseorid;
     }
 
-    if ((int)$moveaftercourseid === 0) {
-        // We've moving the course to the start of the queue.
-        $sql = 'SELECT sortorder
-                      FROM {course}
-                     WHERE category = :categoryid
-                  ORDER BY sortorder';
-        $params = array(
-            'categoryid' => $course->category
-        );
-        $sortorder = $DB->get_field_sql($sql, $params, IGNORE_MULTIPLE);
+    // The courses are stacked against the top of their range, so the free space is in front of them.
+    $catsortorder = (int) $DB->get_field('course_categories', 'sortorder', ['id' => $course->category]);
+    $sortorderlimit = $catsortorder + get_max_courses_in_category();
+    $sql = 'SELECT MIN(sortorder)
+              FROM {course}
+             WHERE category = :categoryid
+               AND sortorder > :catsortorder
+               AND sortorder < :sortorderlimit';
+    $minsortorder = (int) $DB->get_field_sql($sql, [
+        'categoryid' => $course->category,
+        'catsortorder' => $catsortorder,
+        'sortorderlimit' => $sortorderlimit,
+    ]);
+    // A zero minimum means every course is out of range; leave the moved course unplaced for the repair.
+    $roominfront = ($minsortorder - 1 > $catsortorder);
+    $coursesortorder = (int) $course->sortorder;
+    $validcourse = $coursesortorder > $catsortorder && $coursesortorder < $sortorderlimit;
 
-        $sql = 'UPDATE {course}
-                   SET sortorder = sortorder + 1
-                 WHERE category = :categoryid
-                   AND id <> :id';
-        $params = array(
-            'categoryid' => $course->category,
-            'id' => $course->id,
-        );
-        $DB->execute($sql, $params);
-        $DB->set_field('course', 'sortorder', $sortorder, array('id' => $course->id));
+    $targetsortorder = null;
+    $shift = null;
+
+    if ((int) $moveaftercourseid === 0) {
+        // We're moving the course to the start of the queue.
+        if (!$validcourse) {
+            // Unplaced or out of range: let fix_course_sortorder() stack the category.
+            $targetsortorder = 0;
+        } else if ($roominfront) {
+            $targetsortorder = $minsortorder - 1;
+        } else if ($coursesortorder > $minsortorder) {
+            // Shift the courses in front of it up, the moved course takes the first slot.
+            $targetsortorder = $minsortorder;
+            $shift = [
+                'from' => $targetsortorder,
+                'to' => $coursesortorder - 1,
+                'delta' => 1,
+            ];
+        }
     } else if ($course->id === $moveaftercourseid) {
         // They're the same - moronic.
         debugging("Invalid move after course given.", DEBUG_DEVELOPER);
@@ -2749,18 +2767,43 @@ function course_change_sortorder_after_course($courseorid, $moveaftercourseid) {
             debugging("Cannot re-order courses. The given courses do not belong to the same category.", DEBUG_DEVELOPER);
             return false;
         }
-        // Increment all courses in the same category that are ordered after the moveafter course.
-        // This makes a space for the course we're moving.
-        $sql = 'UPDATE {course}
-                       SET sortorder = sortorder + 1
-                     WHERE category = :categoryid
-                       AND sortorder > :sortorder';
-        $params = array(
-            'categoryid' => $moveaftercourse->category,
-            'sortorder' => $moveaftercourse->sortorder
+        $moveaftersortorder = (int) $moveaftercourse->sortorder;
+        $moveafterinrange = $moveaftersortorder > $catsortorder && $moveaftersortorder < $sortorderlimit;
+        if (!$validcourse || !$moveafterinrange) {
+            // Either course is unplaced or out of range: let fix_course_sortorder() stack the category.
+            $targetsortorder = 0;
+        } else if ($coursesortorder > $moveaftersortorder) {
+            // Moving up: shift the courses between them up, then place the course after the move-after course.
+            $targetsortorder = $moveaftersortorder + 1;
+            $shift = [
+                'from' => $targetsortorder,
+                'to' => $coursesortorder - 1,
+                'delta' => 1,
+            ];
+        } else {
+            // Moving down: shift the courses between them down, then place the course after the move-after course.
+            $targetsortorder = $moveaftersortorder;
+            $shift = [
+                'from' => $coursesortorder + 1,
+                'to' => $targetsortorder,
+                'delta' => -1,
+            ];
+        }
+    }
+
+    if (isset($shift)) {
+        $shift['categoryid'] = $course->category;
+        $DB->execute(
+            'UPDATE {course}
+                SET sortorder = sortorder + :delta
+              WHERE category = :categoryid
+                AND sortorder >= :from
+                AND sortorder <= :to',
+            $shift
         );
-        $DB->execute($sql, $params);
-        $DB->set_field('course', 'sortorder', $moveaftercourse->sortorder + 1, array('id' => $course->id));
+    }
+    if (isset($targetsortorder)) {
+        $DB->set_field('course', 'sortorder', $targetsortorder, ['id' => $course->id]);
     }
     fix_course_sortorder();
     cache_helper::purge_by_event('changesincourse');
