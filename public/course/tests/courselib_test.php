@@ -3129,6 +3129,165 @@ final class courselib_test extends advanced_testcase {
     }
 
     /**
+     * Reordering in a full category keeps the courses in order and inside the category range.
+     *
+     * @param int $movecourse the index of the course to move
+     * @param int $moveafter the index of the course to move after, or 0 for the front
+     * @param int[] $expectedorder the indexes of the courses in the expected order
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('full_category_sortorder_provider')]
+    public function test_course_change_sortorder_after_course_full_category(
+        int $movecourse,
+        int $moveafter,
+        array $expectedorder
+    ): void {
+        global $DB, $CFG;
+
+        $this->resetAfterTest();
+        $CFG->maxcoursesincategory = 5;
+
+        $generator = $this->getDataGenerator();
+        $category = $generator->create_category();
+        $courses = [];
+        foreach (range(1, 4) as $index) {
+            $courses[$index] = $generator->create_course(['category' => $category->id]);
+        }
+        $catsortorder = (int) $DB->get_field('course_categories', 'sortorder', ['id' => $category->id]);
+        $sortorderlimit = $catsortorder + get_max_courses_in_category();
+
+        // Start with a full category in the order 1, 2, 3, 4.
+        foreach ($courses as $index => $course) {
+            $DB->set_field('course', 'sortorder', $catsortorder + $index, ['id' => $course->id]);
+        }
+
+        $moveafterid = $moveafter ? $courses[$moveafter]->id : 0;
+        $this->assertTrue(course_change_sortorder_after_course($courses[$movecourse]->id, $moveafterid));
+
+        $sortorders = $DB->get_records_menu('course', ['category' => $category->id], 'sortorder', 'id, sortorder');
+        $expectedids = [];
+        foreach ($expectedorder as $index) {
+            $expectedids[] = (int) $courses[$index]->id;
+        }
+        $this->assertSame($expectedids, array_map('intval', array_keys($sortorders)));
+        $this->assertSame(
+            range($catsortorder + 1, $sortorderlimit - 1),
+            array_map('intval', array_values($sortorders))
+        );
+    }
+
+    /**
+     * Data provider for test_course_change_sortorder_after_course_full_category().
+     *
+     * @return array[]
+     */
+    public static function full_category_sortorder_provider(): array {
+        return [
+            'move the first course down' => [1, 3, [2, 3, 1, 4]],
+            'move a course up' => [3, 1, [1, 3, 2, 4]],
+            'move the first course to the front' => [1, 0, [1, 2, 3, 4]],
+            'move a course after the one before it' => [2, 1, [1, 2, 3, 4]],
+            'move a course to the front' => [2, 0, [2, 1, 3, 4]],
+        ];
+    }
+
+    /**
+     * Courses outside the category range do not take the free space in front of the valid courses.
+     */
+    public function test_course_change_sortorder_after_course_ignores_out_of_range_courses(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $category = $generator->create_category();
+        $broken = $generator->create_course(['category' => $category->id]);
+        $first = $generator->create_course(['category' => $category->id]);
+        $moved = $generator->create_course(['category' => $category->id]);
+        $catsortorder = (int) $DB->get_field('course_categories', 'sortorder', ['id' => $category->id]);
+        $sortorderlimit = $catsortorder + get_max_courses_in_category();
+
+        // A broken course below the range and two valid courses with free space in front of them.
+        $DB->set_field('course', 'sortorder', 0, ['id' => $broken->id]);
+        $DB->set_field('course', 'sortorder', $catsortorder + 2, ['id' => $first->id]);
+        $DB->set_field('course', 'sortorder', $catsortorder + 3, ['id' => $moved->id]);
+
+        $this->assertTrue(course_change_sortorder_after_course($moved->id, 0));
+
+        // The valid course is not pushed away, the moved course takes the free slot in front of it.
+        $this->assertSame($catsortorder + 2, (int) $DB->get_field('course', 'sortorder', ['id' => $first->id]));
+        $this->assertSame($catsortorder + 1, (int) $DB->get_field('course', 'sortorder', ['id' => $moved->id]));
+
+        // The broken course is placed inside the category range.
+        $brokensortorder = (int) $DB->get_field('course', 'sortorder', ['id' => $broken->id]);
+        $this->assertGreaterThan($catsortorder, $brokensortorder);
+        $this->assertLessThan($sortorderlimit, $brokensortorder);
+    }
+
+    /**
+     * Courses outside the category range do not change the way a course is moved after another one.
+     */
+    public function test_course_change_sortorder_after_course_ignores_out_of_range_courses_when_moving_after(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $category = $generator->create_category();
+        $broken = $generator->create_course(['category' => $category->id]);
+        $aftercourse = $generator->create_course(['category' => $category->id]);
+        $moved = $generator->create_course(['category' => $category->id]);
+        $other = $generator->create_course(['category' => $category->id]);
+        $catsortorder = (int) $DB->get_field('course_categories', 'sortorder', ['id' => $category->id]);
+        $sortorderlimit = $catsortorder + get_max_courses_in_category();
+
+        $DB->set_field('course', 'sortorder', 0, ['id' => $broken->id]);
+        $DB->set_field('course', 'sortorder', $catsortorder + 2, ['id' => $aftercourse->id]);
+        $DB->set_field('course', 'sortorder', $catsortorder + 3, ['id' => $other->id]);
+        $DB->set_field('course', 'sortorder', $catsortorder + 4, ['id' => $moved->id]);
+
+        $this->assertTrue(course_change_sortorder_after_course($moved->id, $aftercourse->id));
+
+        // The valid courses keep their order, wherever the rotation put them.
+        $sortorders = $DB->get_records_menu('course', ['category' => $category->id], 'sortorder', 'id, sortorder');
+        $order = array_map('intval', array_keys($sortorders));
+        $order = array_values(array_diff($order, [(int) $broken->id]));
+        $this->assertSame([(int) $aftercourse->id, (int) $moved->id, (int) $other->id], $order);
+        foreach ($sortorders as $sortorder) {
+            $this->assertGreaterThan($catsortorder, (int) $sortorder);
+            $this->assertLessThan($sortorderlimit, (int) $sortorder);
+        }
+    }
+
+    /**
+     * A category with no course in range is repaired and still accepts a new course in front.
+     */
+    public function test_course_change_sortorder_after_course_repairs_category_with_no_courses_in_range(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $category = $generator->create_category();
+        $course1 = $generator->create_course(['category' => $category->id]);
+        $course2 = $generator->create_course(['category' => $category->id]);
+        $catsortorder = (int) $DB->get_field('course_categories', 'sortorder', ['id' => $category->id]);
+        $sortorderlimit = $catsortorder + get_max_courses_in_category();
+
+        $DB->set_field('course', 'sortorder', $sortorderlimit + 1, ['id' => $course1->id]);
+        $DB->set_field('course', 'sortorder', $sortorderlimit + 2, ['id' => $course2->id]);
+
+        $this->assertTrue(course_change_sortorder_after_course($course1->id, 0));
+
+        // The repaired category is stacked against the top, so the next course still goes in front.
+        $course3 = $generator->create_course(['category' => $category->id]);
+        $courses = $DB->get_records('course', ['category' => $category->id], 'sortorder', 'id, sortorder');
+        $this->assertSame(
+            [(int) $course3->id, (int) $course1->id, (int) $course2->id],
+            array_keys($courses)
+        );
+    }
+
+    /**
      * Tests changing the visibility of a course.
      */
     public function test_course_change_visibility(): void {
