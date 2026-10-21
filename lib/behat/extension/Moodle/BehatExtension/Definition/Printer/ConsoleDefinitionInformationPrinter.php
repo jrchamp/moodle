@@ -71,9 +71,11 @@ final class ConsoleDefinitionInformationPrinter extends ConsoleDefinitionPrinter
         array $definitions,
         ?Suite $suite = null
     ): void {
+        static $printed = [];
+
         $template = <<<TPL
         <div class="step"><div class="stepdescription">{description}</div>
-        <div class="stepcontent"><span class="steptype">{type}</span><span class="stepregex">{regex}</span></div>
+        <div class="stepcontent"><span class="steptype">{type}</span> <span class="stepregex">{regex}</span></div>
         <div class="stepapipath">{apipath}</div>
         </div>
         TPL;
@@ -100,22 +102,33 @@ final class ConsoleDefinitionInformationPrinter extends ConsoleDefinitionPrinter
                 continue;
             }
 
-            $description = $definition->getDescription();
+            $description = strtr($definition->getDescription(), ["\n" => ' ']);
 
             // Removing beginning and end.
-            $pattern = substr($pattern, 2, strlen($pattern) - 4);
+            if (str_ends_with($pattern, '$/')) {
+                $pattern = substr($pattern, 0, -2);
+            }
+            if (str_starts_with($pattern, '/^')) {
+                $pattern = substr($pattern, 2);
+            }
 
             // Replacing inline regex for expected info string.
             $pattern = preg_replace_callback(
                 '/"\(\?P<([^>]*)>(.*?)"( |$)/',
-                fn ($matches): string => '"' . strtoupper($matches[1]) . '" ',
+                fn ($matches): string => '"' . strtoupper($matches[1]) . '"' . $matches[3],
                 $pattern
             );
 
+            $uniquekey = $definition->getPath() . '~' . $pattern;
+            if (isset($printed[$uniquekey])) {
+                continue;
+            }
+
+            $printed[$uniquekey] = true;
             $definitiontoprint[] = strtr($template, [
-                '{regex}'       => $pattern,
-                '{type}'        => str_pad($definition->getType(), 5, ' ', STR_PAD_LEFT),
-                '{description}' => $description ? $description : '',
+                '{regex}'       => htmlspecialchars($pattern),
+                '{type}'        => $definition->getType(),
+                '{description}' => $description ? htmlspecialchars($description) : '',
                 '{apipath}'     => $definition->getPath(),
             ]);
 

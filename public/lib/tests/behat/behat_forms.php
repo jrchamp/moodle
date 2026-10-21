@@ -784,7 +784,7 @@ class behat_forms extends behat_base {
     /**
      * Assert the given option exist in the given autocomplete list
      *
-     * @Given /^I should see "(?P<option_string>(?:[^"]|\\")*)" in the list of options for the "(?P<field_string>(?:[^"]|\\")*)" autocomplete$$/
+     * @Given /^I should see "(?P<option_string>(?:[^"]|\\")*)" in the list of options for the "(?P<field_string>(?:[^"]|\\")*)" autocomplete$/
      *
      * @param string $option Name of option
      * @param string $field Field name
