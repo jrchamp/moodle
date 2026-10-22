@@ -191,16 +191,27 @@ class scores extends resource_base {
             $score->scoreMaximum = 1;
         }
         $response->set_code(200);
+
+        $hasscore = isset($score->scoreGiven);
+        $isfinal = $score->gradingProgress === 'FullyGraded';
+
+        // Support for DeleteResult outcome to clear the score.
+        $deletescore = !$hasscore && $score->gradingProgress === 'NotReady' && $score->activityProgress === 'Initialized';
+
+        // Always allow final scores and the DeleteResult outcome.
+        if (!$isfinal && !$deletescore) {
+            // Ignore partial updates without a score, or when partial scores are not accepted.
+            if (!$hasscore || !$this->get_service()->accepts_partial_scores()) {
+                return;
+            }
+        }
+
         $grade = \grade_grade::fetch(array('itemid' => $item->id, 'userid' => $score->userId));
         if ($grade &&  !empty($grade->timemodified)) {
+            // Unfortunately, grades use integer timestamps, so we do not have sub-second precision.
             if ($grade->timemodified >= strtotime($score->timestamp)) {
                 $exmsg = "Refusing score with an earlier timestamp for item " . $item->id . " and user " . $score->userId;
                 throw new \Exception($exmsg, 409);
-            }
-        }
-        if (isset($score->scoreGiven)) {
-            if ($score->gradingProgress != 'FullyGraded') {
-                $score->scoreGiven = null;
             }
         }
         $this->get_service()->save_grade_item($item, $score, $score->userId);
