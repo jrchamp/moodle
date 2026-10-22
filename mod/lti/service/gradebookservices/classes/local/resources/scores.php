@@ -191,16 +191,22 @@ class scores extends resource_base {
             $score->scoreMaximum = 1;
         }
         $response->set_code(200);
+
+        $hasscore = isset($score->scoreGiven);
+
+        // Support for DeleteResult outcome to clear the score.
+        $deletescore = !$hasscore && $score->gradingProgress === 'NotReady' && $score->activityProgress === 'Initialized';
+
+        // Ignore updates without a score.
+        if (!$hasscore && !$deletescore) {
+            return;
+        }
+
         $grade = \grade_grade::fetch(array('itemid' => $item->id, 'userid' => $score->userId));
         if ($grade &&  !empty($grade->timemodified)) {
             if ($grade->timemodified >= strtotime($score->timestamp)) {
                 $exmsg = "Refusing score with an earlier timestamp for item " . $item->id . " and user " . $score->userId;
                 throw new \Exception($exmsg, 409);
-            }
-        }
-        if (isset($score->scoreGiven)) {
-            if ($score->gradingProgress != 'FullyGraded') {
-                $score->scoreGiven = null;
             }
         }
         $this->get_service()->save_grade_item($item, $score, $score->userId);
