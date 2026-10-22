@@ -23,6 +23,12 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['acceptpartialscores'] = 'Accept partial scores';
+$string['acceptpartialscores_help'] = 'If enabled, scores that the tool reports as not final (any grading progress other than FullyGraded, such as Pending or PendingManual) are recorded in the gradebook immediately. Otherwise only final scores are recorded.
+
+Enable this only if the tool reports progress as a score that only increases, for example the percentage of a course completed.
+
+Partial scores count towards totals, activity completion and access restrictions like any other grade. If the final grade is lower, activity completion is updated, but course completion and badges already awarded are not revoked.';
 $string['alwaysgs'] = 'Use this service for grade sync and column management ';
 $string['grade_synchronization'] = 'IMS LTI Assignment and Grade Services';
 $string['grade_synchronization_help'] = 'Whether to use the IMS LTI Assignment and Grade Services to synchronise grades instead of the Basic Outcomes service.

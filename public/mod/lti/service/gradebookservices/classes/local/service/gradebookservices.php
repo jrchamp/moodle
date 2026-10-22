@@ -145,6 +145,22 @@ class gradebookservices extends service_base {
         $mform->setType($selectelementname, 'int');
         $mform->setDefault($selectelementname, 0);
         $mform->addHelpButton($selectelementname, $identifier, $this->get_component_id());
+
+        $acceptsetting = 'ltiservice_acceptpartialscores';
+        $mform->addElement('selectyesno', $acceptsetting, get_string('acceptpartialscores', $this->get_component_id()));
+        $mform->setDefault($acceptsetting, 0);
+        $mform->addHelpButton($acceptsetting, 'acceptpartialscores', $this->get_component_id());
+        $mform->hideIf($acceptsetting, $selectelementname, 'eq', 0);
+    }
+
+    /**
+     * Whether partial scores should be recorded.
+     *
+     * @return bool
+     */
+    public function accepts_partial_scores(): bool {
+        $typeconfig = $this->get_typeconfig();
+        return !empty($typeconfig['ltiservice_acceptpartialscores']);
     }
 
     /**
@@ -504,7 +520,11 @@ class gradebookservices extends service_base {
         }
         require_once($CFG->libdir . '/gradelib.php');
         $finalgrade = null;
-        $timemodified = null;
+        if (!empty($score->timemodified)) {
+            $timemodified = $score->timemodified;
+        } else {
+            $timemodified = \core\di::get(\core\clock::class)->time();
+        }
         if (isset($score->scoreGiven)) {
             $finalgrade = grade_floatval($score->scoreGiven);
             $max = 1;
@@ -514,11 +534,6 @@ class gradebookservices extends service_base {
             if (!is_null($max) && grade_floats_different($max, $gradeitem->grademax) && grade_floats_different($max, 0.0)) {
                 // Rescale to match the grade item maximum.
                 $finalgrade = grade_floatval($finalgrade * $gradeitem->grademax / $max);
-            }
-            if (isset($score->timestamp)) {
-                $timemodified = strtotime($score->timestamp);
-            } else {
-                $timemodified = time();
             }
         }
         $feedbackformat = FORMAT_MOODLE;
@@ -553,6 +568,10 @@ class gradebookservices extends service_base {
             throw new \Exception(null, 500);
         }
 
+        // Core clears timemodified when a grade is cleared, but it is needed to reject older updates.
+        if ($finalgrade === null) {
+            $DB->set_field('grade_grades', 'timemodified', $timemodified, ['itemid' => $gradeitem->id, 'userid' => $userid]);
+        }
     }
 
     /**
