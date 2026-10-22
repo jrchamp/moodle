@@ -20,6 +20,7 @@ use ltiservice_gradebookservices\local\resources\lineitem;
 use ltiservice_gradebookservices\local\resources\results;
 use ltiservice_gradebookservices\local\resources\scores;
 use ltiservice_gradebookservices\local\service\gradebookservices;
+use mod_lti\local\ltiservice\response;
 
 /**
  * Unit tests for lti lineitem.
@@ -61,7 +62,7 @@ final class lineitem_test extends \advanced_testcase {
 
         $this->set_server_for_put($course, $typeid, $lineitem);
 
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $lineitem->resourceId = $resourceid.'modified';
         $lineitem->tag = $tag.'modified';
         $response->set_request_data(json_encode($lineitem));
@@ -107,7 +108,7 @@ final class lineitem_test extends \advanced_testcase {
 
         $this->set_server_for_put($course, $typeid, $lineitem);
 
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $lineitem->resourceId = $resourceid.'modified';
         $lineitem->tag = $tag.'modified';
         $lineitem->submissionReview->url = $subreviewurl.'modified';
@@ -157,7 +158,7 @@ final class lineitem_test extends \advanced_testcase {
 
         $this->set_server_for_put($course, $typeid, $lineitem);
 
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $lineitem->resourceId = $resourceid.'modified';
         $lineitem->tag = $tag.'modified';
         $lineitem->submissionReview = ['url' => $subreviewurl];
@@ -215,7 +216,7 @@ final class lineitem_test extends \advanced_testcase {
             'gradingProgress' => "FullyGraded",
             'userId' => $user->id,
         ];
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $response->set_content_type('application/vnd.ims.lis.v1.score+json');
         $response->set_request_data(json_encode($requestdata));
         $score->execute($response);
@@ -232,7 +233,7 @@ final class lineitem_test extends \advanced_testcase {
         $_SERVER['HTTP_Authorization'] = 'Bearer '.$token->token;
         $_GET['type_id'] = (string)$typeid;
         $result = new results($gbservice);
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $response->set_content_type('application/vnd.ims.lis.v2.resultcontainer+json');
         $result->execute($response);
         $body = json_decode($response->get_body());
@@ -248,7 +249,7 @@ final class lineitem_test extends \advanced_testcase {
         $_GET['type_id'] = (string)$typeid;
         $requestdata['scoreGiven'] = "14";
         $requestdata['timestamp'] = "2024-08-08T18:54:36.736+00:00";
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $response->set_content_type('application/vnd.ims.lis.v1.score+json');
         $response->set_request_data(json_encode($requestdata));
         $score->execute($response);
@@ -262,11 +263,208 @@ final class lineitem_test extends \advanced_testcase {
         $_GET['type_id'] = (string)$typeid;
         $requestdata['scoreGiven'] = "15";
         $requestdata['timestamp'] = date('c', time());
-        $response = new \mod_lti\local\ltiservice\response();
+        $response = new response();
         $response->set_content_type('application/vnd.ims.lis.v1.score+json');
         $response->set_request_data(json_encode($requestdata));
         $score->execute($response);
         $this->assertEquals(200, json_decode($response->get_code()));
+    }
+
+    /**
+     * Data provider for partial scores.
+     *
+     * @return array
+     */
+    public static function partial_score_provider(): array {
+        return [
+            'Pending' => ['Pending'],
+            'NotReady' => ['NotReady'],
+        ];
+    }
+
+    /**
+     * Test that partial scores are ignored by default.
+     *
+     * @param string $gradingprogress The grading progress to test.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('partial_score_provider')]
+    public function test_partial_score_is_ignored_by_default(string $gradingprogress): void {
+        [$course, $typeid, $user, $itemid] = $this->create_score_test_data();
+
+        $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 8,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'Completed',
+            'gradingProgress' => 'FullyGraded',
+            'timestamp' => '2024-08-07T18:54:36.736+00:00',
+        ]);
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 4,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'InProgress',
+            'gradingProgress' => $gradingprogress,
+            'timestamp' => '2024-08-08T18:54:36.736+00:00',
+        ]);
+        $this->assertEquals(200, $response->get_code());
+        $grade = \grade_grade::fetch(['itemid' => $itemid, 'userid' => $user->id]);
+        $this->assertEquals(8, $grade->rawgrade);
+
+        // A later final score must still be accepted.
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 10,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'Completed',
+            'gradingProgress' => 'FullyGraded',
+            'timestamp' => '2024-08-09T18:54:36.736+00:00',
+        ]);
+        $this->assertEquals(200, $response->get_code());
+        $grade = \grade_grade::fetch(['itemid' => $itemid, 'userid' => $user->id]);
+        $this->assertEquals(10, $grade->rawgrade);
+    }
+
+    /**
+     * Data provider for score-less updates.
+     *
+     * @return array
+     */
+    public static function scoreless_update_provider(): array {
+        return [
+            'DeleteResult' => ['NotReady', 'Initialized', null],
+            'Final' => ['FullyGraded', 'Completed', null],
+            'Other partial' => ['NotReady', 'InProgress', 8],
+        ];
+    }
+
+    /**
+     * Test that score-less updates clear or preserve the existing grade as appropriate.
+     *
+     * @param string $gradingprogress The grading progress to test.
+     * @param string $activityprogress The activity progress to test.
+     * @param int|null $expectedgrade The expected grade after the update.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('scoreless_update_provider')]
+    public function test_scoreless_update(
+        string $gradingprogress,
+        string $activityprogress,
+        ?int $expectedgrade
+    ): void {
+        [$course, $typeid, $user, $itemid] = $this->create_score_test_data(1);
+
+        $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 8,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'Completed',
+            'gradingProgress' => 'FullyGraded',
+            'timestamp' => '2024-08-07T18:54:36.736+00:00',
+        ]);
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'activityProgress' => $activityprogress,
+            'gradingProgress' => $gradingprogress,
+            'timestamp' => '2024-08-08T18:54:36.736+00:00',
+        ]);
+
+        $this->assertEquals(200, $response->get_code());
+        $grade = \grade_grade::fetch(['itemid' => $itemid, 'userid' => $user->id]);
+        $this->assertEquals($expectedgrade, $grade->rawgrade);
+    }
+
+    /**
+     * Test that partial scores are recorded when the tool is configured to accept them.
+     *
+     * @param string $gradingprogress The grading progress to test.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('partial_score_provider')]
+    public function test_partial_score_is_recorded_when_enabled(string $gradingprogress): void {
+        [$course, $typeid, $user, $itemid] = $this->create_score_test_data(1);
+
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 6,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'InProgress',
+            'gradingProgress' => $gradingprogress,
+            'timestamp' => '2024-08-07T18:54:36.736+00:00',
+        ]);
+
+        $this->assertEquals(200, $response->get_code());
+        $grade = \grade_grade::fetch(['itemid' => $itemid, 'userid' => $user->id]);
+        $this->assertEquals(6, $grade->rawgrade);
+    }
+
+    /**
+     * Test that scores with the same second-precision timestamp are rejected.
+     */
+    public function test_score_with_same_second_timestamp_is_rejected(): void {
+        [$course, $typeid, $user, $itemid] = $this->create_score_test_data();
+
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 4,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'Completed',
+            'gradingProgress' => 'FullyGraded',
+            'timestamp' => '2024-08-07T18:54:36.100+00:00',
+        ]);
+        $this->assertEquals(200, $response->get_code());
+
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 8,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'Completed',
+            'gradingProgress' => 'FullyGraded',
+            'timestamp' => '2024-08-07T18:54:36.900+00:00',
+        ]);
+        $this->assertEquals(409, $response->get_code());
+        $grade = \grade_grade::fetch(['itemid' => $itemid, 'userid' => $user->id]);
+        $this->assertEquals(4, $grade->rawgrade);
+    }
+
+    /**
+     * Create a course, tool, user and grade item for score tests.
+     *
+     * @param int $acceptpartialscores Whether to accept partial scores.
+     * @return array
+     */
+    private function create_score_test_data(int $acceptpartialscores = 0): array {
+        global $CFG;
+        require_once($CFG->dirroot . '/mod/lti/locallib.php');
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $typeid = $this->create_type($acceptpartialscores);
+        $user = $this->getDataGenerator()->create_and_enrol($course);
+        $gbservice = new gradebookservices();
+        $gbservice->set_type(lti_get_type($typeid));
+        $this->create_graded_lti($typeid, $course, 'test-resource-id', 'tag');
+        $gradeitems = $gbservice->get_lineitems($course->id, null, null, null, null, null, $typeid);
+        return [$course, $typeid, $user, $gradeitems[1][0]->id];
+    }
+
+    /**
+     * Post a score for a user.
+     *
+     * @param int $courseid Course ID
+     * @param int $typeid Tool type ID
+     * @param int $itemid Grade item ID
+     * @param int $userid User ID
+     * @param array $requestdata Score data
+     * @return response
+     */
+    private function post_score(int $courseid, int $typeid, int $itemid, int $userid, array $requestdata): response {
+        $gbservice = new gradebookservices();
+        $gbservice->set_type(lti_get_type($typeid));
+        $score = new scores($gbservice);
+
+        $token = lti_new_access_token($typeid, ['https://purl.imsglobal.org/spec/lti-ags/scope/score']);
+        $_SERVER['HTTP_Authorization'] = 'Bearer ' . $token->token;
+        $_SERVER['PATH_INFO'] = "/$courseid/lineitems/$itemid/lineitem/scores?type_id=$typeid";
+        $_SERVER['REQUEST_METHOD'] = \mod_lti\local\ltiservice\resource_base::HTTP_POST;
+
+        $_GET['type_id'] = (string) $typeid;
+        $requestdata['userId'] = $userid;
+
+        $response = new response();
+        $response->set_content_type('application/vnd.ims.lis.v1.score+json');
+        $response->set_request_data(json_encode($requestdata));
+        $score->execute($response);
+        return $response;
     }
 
     /**
@@ -298,8 +496,10 @@ final class lineitem_test extends \advanced_testcase {
 
     /**
      * Creates a new LTI Tool Type.
+     *
+     * @param int $acceptpartialscores Whether to accept partial scores.
      */
-    private function create_type() {
+    private function create_type(int $acceptpartialscores = 0) {
         $type = new \stdClass();
         $type->state = LTI_TOOL_STATE_CONFIGURED;
         $type->name = "Test tool";
@@ -309,6 +509,7 @@ final class lineitem_test extends \advanced_testcase {
 
         $config = new \stdClass();
         $config->ltiservice_gradesynchronization = 2;
+        $config->ltiservice_acceptpartialscores = $acceptpartialscores;
         return lti_add_type($type, $config);
     }
 
