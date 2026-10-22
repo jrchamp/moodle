@@ -145,6 +145,22 @@ class gradebookservices extends service_base {
         $mform->setType($selectelementname, 'int');
         $mform->setDefault($selectelementname, 0);
         $mform->addHelpButton($selectelementname, $identifier, $this->get_component_id());
+
+        $acceptsetting = 'ltiservice_acceptpartialscores';
+        $mform->addElement('selectyesno', $acceptsetting, get_string('acceptpartialscores', $this->get_component_id()));
+        $mform->setDefault($acceptsetting, 0);
+        $mform->addHelpButton($acceptsetting, 'acceptpartialscores', $this->get_component_id());
+        $mform->hideIf($acceptsetting, $selectelementname, 'eq', 0);
+    }
+
+    /**
+     * Whether scores that are not fully graded should be recorded.
+     *
+     * @return bool
+     */
+    public function accepts_partial_scores(): bool {
+        $typeconfig = $this->get_typeconfig();
+        return !empty($typeconfig['ltiservice_acceptpartialscores']);
     }
 
     /**
