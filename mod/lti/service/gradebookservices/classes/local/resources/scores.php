@@ -198,11 +198,6 @@ class scores extends resource_base {
                 throw new \Exception($exmsg, 409);
             }
         }
-        if (isset($score->scoreGiven)) {
-            if ($score->gradingProgress != 'FullyGraded') {
-                $score->scoreGiven = null;
-            }
-        }
         $this->get_service()->save_grade_item($item, $score, $score->userId);
     }
 
