@@ -23,6 +23,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['acceptpartialscores'] = 'Accept partial scores';
+$string['acceptpartialscores_help'] = 'Whether to record partial scores before grading is final. Enabling this allows partial grades to affect totals, completion and access restrictions.';
 $string['alwaysgs'] = 'Use this service for grade sync and column management ';
 $string['grade_synchronization'] = 'IMS LTI Assignment and Grade Services';
 $string['grade_synchronization_help'] = 'Whether to use the IMS LTI Assignment and Grade Services to synchronise grades instead of the Basic Outcomes service.
