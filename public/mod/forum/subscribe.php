@@ -121,6 +121,7 @@ if ($returnurl) {
     $returnto = $returnurl;
 }
 
+$errorurl = new moodle_url('/mod/forum/view.php', ['f' => $id]);
 $subscribersurl = new moodle_url('/mod/forum/subscribers.php', ['id' => $id, 'edit' => $edit]);
 
 if (!is_null($mode) and has_capability('mod/forum:managesubscriptions', $context)) {
@@ -215,7 +216,7 @@ if ($issubscribed) {
                 \core\output\notification::NOTIFY_SUCCESS
             );
         } else {
-            throw new \moodle_exception('cannotunsubscribe', 'forum', get_local_referer(false));
+            throw new \moodle_exception('cannotunsubscribe', 'forum', $errorurl);
         }
     } else {
         if (\mod_forum\subscriptions::unsubscribe_user_from_discussion($user->id, $discussion, $context)) {
@@ -227,16 +228,16 @@ if ($issubscribed) {
                 \core\output\notification::NOTIFY_SUCCESS
             );
         } else {
-            throw new \moodle_exception('cannotunsubscribe', 'forum', get_local_referer(false));
+            throw new \moodle_exception('cannotunsubscribe', 'forum', $errorurl);
         }
     }
 
 } else {  // subscribe
     if (\mod_forum\subscriptions::subscription_disabled($forum) && !has_capability('mod/forum:managesubscriptions', $context)) {
-        throw new \moodle_exception('disallowsubscribe', 'forum', get_local_referer(false));
+        throw new \moodle_exception('disallowsubscribe', 'forum', $errorurl);
     }
     if (!has_capability('mod/forum:viewdiscussion', $context)) {
-        throw new \moodle_exception('noviewdiscussionspermission', 'forum', get_local_referer(false));
+        throw new \moodle_exception('noviewdiscussionspermission', 'forum', $errorurl);
     }
     if (is_null($sesskey)) {
         // We came here via link in email.

@@ -1018,8 +1018,8 @@ class renderer extends plugin_renderer_base {
         $output .= $this->view_information($quiz, $cm, $context, $messages);
         $guestno = html_writer::tag('p', get_string('guestsno', 'quiz'));
         $liketologin = html_writer::tag('p', get_string('liketologin'));
-        $referer = get_local_referer(false);
-        $output .= $this->confirm($guestno . "\n\n" . $liketologin . "\n", get_login_url(), $referer);
+        $cancelurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+        $output .= $this->confirm($guestno . "\n\n" . $liketologin . "\n", get_login_url(), $cancelurl);
         return $output;
     }
 
