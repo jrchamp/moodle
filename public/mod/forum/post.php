@@ -102,10 +102,10 @@ if (!isloggedin() or isguestuser()) {
     $PAGE->set_context($modcontext);
     $PAGE->set_title($course->shortname);
     $PAGE->set_heading($course->fullname);
-    $referer = get_local_referer(false);
+    $cancelurl = $urlfactory->get_forum_view_url_from_forum($forumentity);
 
     echo $OUTPUT->header();
-    echo $OUTPUT->confirm(get_string('noguestpost', 'forum'), get_login_url(), $referer, [
+    echo $OUTPUT->confirm(get_string('noguestpost', 'forum'), get_login_url(), $cancelurl, [
         'confirmtitle' => get_string('noguestpost:title', 'forum'),
         'continuestr' => get_string('login')
     ]);
