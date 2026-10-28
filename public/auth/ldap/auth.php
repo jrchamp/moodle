@@ -1663,9 +1663,14 @@ class auth_plugin_ldap extends auth_plugin_base {
         // HTTPS is potentially required
         //httpsrequired(); - this must be used before setting the URL, it is already done on the login/index.php
 
+        $postreferer = '';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $postreferer = get_local_referer();
+        }
         if (($_SERVER['REQUEST_METHOD'] === 'GET'         // Only on initial GET of loginpage
              || ($_SERVER['REQUEST_METHOD'] === 'POST'
-                 && (get_local_referer() != strip_querystring(qualified_me()))))
+                 && $postreferer !== ''
+                 && ($postreferer != strip_querystring(qualified_me()))))
                                                           // Or when POSTed from another place
                                                           // See MDL-14071
             && !empty($this->config->ntlmsso_enabled)     // SSO enabled

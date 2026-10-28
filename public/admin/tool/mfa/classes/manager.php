@@ -592,9 +592,14 @@ class manager {
         // Circular checks.
         $authurl = new \moodle_url('/admin/tool/mfa/auth.php');
         $authlocal = $authurl->out_as_local_url();
-        if (isset($SESSION->mfa_redir_referer)
-            && $SESSION->mfa_redir_referer != $authlocal) {
-            if ($SESSION->mfa_redir_referer == get_local_referer(true)) {
+        $referer = get_local_referer(true);
+        // An empty referer cannot identify a loop, as every request would look identical.
+        if (
+            $referer !== ''
+            && isset($SESSION->mfa_redir_referer)
+            && $SESSION->mfa_redir_referer != $authlocal
+        ) {
+            if ($SESSION->mfa_redir_referer == $referer) {
                 // Possible redirect loop.
                 if (!isset($SESSION->mfa_redir_count)) {
                     $SESSION->mfa_redir_count = 1;
@@ -610,7 +615,7 @@ class manager {
             }
         }
         // Set referer after checks.
-        $SESSION->mfa_redir_referer = get_local_referer(true);
+        $SESSION->mfa_redir_referer = $referer;
 
         // Don't redirect if already on auth.php.
         if ($url->compare($authurl, URL_MATCH_BASE)) {

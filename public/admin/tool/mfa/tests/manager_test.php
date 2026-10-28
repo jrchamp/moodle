@@ -363,6 +363,40 @@ final class manager_test extends \advanced_testcase {
     }
 
     /**
+     * Tests that a missing referer does not trigger the redirect loop protection.
+     */
+    public function test_should_require_mfa_redirection_loop_without_referer(): void {
+        global $CFG, $SESSION;
+        $CFG->wwwroot = 'http://phpunit.test';
+        $this->resetAfterTest(true);
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        unset($SESSION->mfa_redir_referer);
+        unset($SESSION->mfa_redir_count);
+        $originalreferer = $_SERVER['HTTP_REFERER'] ?? null;
+        unset($_SERVER['HTTP_REFERER']);
+
+        try {
+            $url = new \moodle_url('/');
+            for ($i = 0; $i <= \tool_mfa\manager::REDIR_LOOP_THRESHOLD; $i++) {
+                $this->assertEquals(
+                    \tool_mfa\manager::REDIRECT,
+                    \tool_mfa\manager::should_require_mfa($url, false)
+                );
+            }
+        } finally {
+            if ($originalreferer === null) {
+                unset($_SERVER['HTTP_REFERER']);
+            } else {
+                $_SERVER['HTTP_REFERER'] = $originalreferer;
+            }
+            unset($SESSION->mfa_redir_referer);
+            unset($SESSION->mfa_redir_count);
+        }
+    }
+
+    /**
      * Tests checking for possible setup factor
      */
     public function test_possible_factor_setup(): void {
