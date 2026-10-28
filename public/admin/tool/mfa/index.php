@@ -31,7 +31,7 @@ require_once($CFG->libdir.'/tablelib.php');
 require_login(null, false);
 require_capability('moodle/site:config', context_system::instance());
 
-$returnurl = get_local_referer(false);
+$returnurl = new moodle_url('/admin/settings.php', ['section' => 'managemfa']);
 
 $PAGE->set_url('/admin/tool/mfa/index.php');
 
