@@ -1119,16 +1119,15 @@ function reorder_sections($sections, $origin_position, $target_position) {
         return false;
     }
 
-    // We can't move section position 0
-    if ($origin_position < 1) {
-        echo "We can't move section position 0";
+    // We can't move section position 0.
+    if ((int) $origin_position === 0) {
         return false;
     }
 
-    // Locate origin section in sections array
-    if (!$origin_key = array_search($origin_position, $sections)) {
-        echo "searched position not in sections array";
-        return false; // searched position not in sections array
+    // Locate origin section in sections array.
+    if (($origin_key = array_search($origin_position, $sections)) === false) {
+        // Searched position not in sections array.
+        return false;
     }
 
     // Extract origin section

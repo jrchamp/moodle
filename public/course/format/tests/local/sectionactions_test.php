@@ -1274,6 +1274,35 @@ final class sectionactions_test extends \advanced_testcase {
         $this->assertFalse($hasmoved);
     }
 
+    /**
+     * Test section move at method when the course contains a negative section number.
+     *
+     * Negative section numbers can be left in the database when a previous move was interrupted
+     * between the two update passes.
+     */
+    public function test_move_at_with_negative_section(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course(
+            ['format' => 'topics', 'numsections' => 4, 'initsections' => true],
+            ['createsections' => true]
+        );
+
+        $corruptedsection = $DB->get_record('course_sections', ['course' => $course->id, 'section' => 2]);
+        $DB->set_field('course_sections', 'section', -2, ['id' => $corruptedsection->id]);
+
+        $sectionactions = formatactions::section($course);
+        $sectiontomove = get_fast_modinfo($course)->get_section_info(1);
+
+        // This used to throw a duplicate key exception while renumbering the sections.
+        $this->assertTrue($sectionactions->move_at($sectiontomove, 4));
+
+        $sections = $DB->get_records('course_sections', ['course' => $course->id], 'section ASC', 'id, section');
+        $this->assertCount(5, $sections);
+        $this->assertEquals(range(0, 4), array_map(fn($section) => (int) $section->section, array_values($sections)));
+        $this->assertEquals(4, $DB->get_field('course_sections', 'section', ['id' => $sectiontomove->id]));
+    }
+
 
     /**
      * Data provider for test_move_at.
