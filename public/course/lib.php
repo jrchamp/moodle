@@ -1136,13 +1136,18 @@ function move_section_to($course, $section, $destination, $ignorenumsections = f
     }
 
     $movedsections = reorder_sections($sections, $section, $destination);
+    if ($movedsections === false) {
+        return false;
+    }
 
     // Update all sections. Do this in 2 steps to avoid breaking database
-    // uniqueness constraint
+    // uniqueness constraint. Temporary values are placed below all existing
+    // sections, including negative ones.
+    $safeoffset = min(0, (int) min($sections)) - 1;
     $transaction = $DB->start_delegated_transaction();
     foreach ($movedsections as $id => $position) {
         if ((int) $sections[$id] !== $position) {
-            $DB->set_field('course_sections', 'section', -$position, ['id' => $id]);
+            $DB->set_field('course_sections', 'section', $safeoffset - $position, ['id' => $id]);
             // Invalidate the section cache by given section id.
             course_modinfo::purge_course_section_cache_by_id($course->id, $id);
         }
@@ -1287,16 +1292,15 @@ function reorder_sections($sections, $origin_position, $target_position) {
         return false;
     }
 
-    // We can't move section position 0
-    if ($origin_position < 1) {
-        echo "We can't move section position 0";
+    // We can't move section position 0.
+    if ((int) $origin_position === 0) {
         return false;
     }
 
-    // Locate origin section in sections array
-    if (!$origin_key = array_search($origin_position, $sections)) {
-        echo "searched position not in sections array";
-        return false; // searched position not in sections array
+    // Locate origin section in sections array.
+    if (($origin_key = array_search($origin_position, $sections)) === false) {
+        // Searched position not in sections array.
+        return false;
     }
 
     // Extract origin section

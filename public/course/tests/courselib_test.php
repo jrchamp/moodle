@@ -1170,6 +1170,38 @@ final class courselib_test extends advanced_testcase {
         $this->assertEquals(4, $sectionmovequerycount);
     }
 
+    /**
+     * Test moving a section when the course contains a negative section number.
+     *
+     * Negative section numbers can be left in the database when a previous move was interrupted
+     * between the two update passes.
+     *
+     * @covers ::move_section_to
+     * @return void
+     */
+    public function test_move_section_to_with_negative_section(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course(
+            ['format' => 'topics', 'numsections' => 4],
+            ['createsections' => true]
+        );
+
+        $corruptedsection = $DB->get_record('course_sections', ['course' => $course->id, 'section' => 2]);
+        $DB->set_field('course_sections', 'section', -2, ['id' => $corruptedsection->id]);
+        $sectiontomove = $DB->get_record('course_sections', ['course' => $course->id, 'section' => 1]);
+
+        // This used to throw a duplicate key exception while renumbering the sections.
+        $this->assertTrue(move_section_to($course, 1, 4));
+
+        $sections = $DB->get_records('course_sections', ['course' => $course->id], 'section ASC', 'id, section');
+        $this->assertCount(5, $sections);
+        $this->assertEquals(range(0, 4), array_map(fn($section) => (int) $section->section, array_values($sections)));
+        $this->assertEquals(4, $DB->get_field('course_sections', 'section', ['id' => $sectiontomove->id]));
+    }
+
     public function test_course_can_delete_section(): void {
         global $DB;
         $this->resetAfterTest(true);
