@@ -478,13 +478,18 @@ class sectionactions extends baseactions {
 
         $sectionposition = $sections[$sectionid];
         $movedsections = $this->reorder_sections($sections, $sectionposition, $targetposition);
+        if ($movedsections === null) {
+            return false;
+        }
 
         // Update all sections. Do this in 2 steps to avoid breaking database
-        // uniqueness constraint.
+        // uniqueness constraint. Temporary values are placed below all existing
+        // sections, including negative ones.
+        $safeoffset = min(0, (int) min($sections)) - 1;
         $transaction = $DB->start_delegated_transaction();
         foreach ($movedsections as $id => $position) {
             if ((int) $sections[$id] !== $position) {
-                $DB->set_field('course_sections', 'section', -$position, ['id' => $id]);
+                $DB->set_field('course_sections', 'section', $safeoffset - $position, ['id' => $id]);
                 // Invalidate the section cache by given section id.
                 \core_course\modinfo::purge_course_section_cache_by_id($this->course->id, $id);
             }
@@ -531,13 +536,14 @@ class sectionactions extends baseactions {
         }
 
         // We can't move section position 0.
-        if ($originposition < 1) {
+        if ((int) $originposition === 0) {
             return null;
         }
 
         // Locate origin section in sections array.
-        if (!$originkey = array_search($originposition, $sections)) {
-            return null; // Searched position not in sections array.
+        if (($originkey = array_search($originposition, $sections)) === false) {
+            // Searched position not in sections array.
+            return null;
         }
 
         // Extract origin section.
