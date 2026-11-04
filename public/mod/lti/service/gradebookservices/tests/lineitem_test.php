@@ -277,12 +277,12 @@ final class lineitem_test extends \advanced_testcase {
     }
 
     /**
-     * Test that partial scores are ignored by default.
+     * Test that partial scores clear the existing grade by default.
      *
      * @param string $gradingprogress The grading progress to test.
      */
     #[\PHPUnit\Framework\Attributes\DataProvider('partial_score_provider')]
-    public function test_partial_score_is_ignored_by_default(string $gradingprogress): void {
+    public function test_partial_score_clears_existing_grade_by_default(string $gradingprogress): void {
         [$course, $typeid, $user, $itemid] = $this->create_score_test_data();
 
         $this->post_score($course->id, $typeid, $itemid, $user->id, [
@@ -301,7 +301,17 @@ final class lineitem_test extends \advanced_testcase {
         ]);
         $this->assertEquals(200, $response->get_code());
         $grade = \grade_grade::fetch(['itemid' => $itemid, 'userid' => $user->id]);
-        $this->assertEquals(8, $grade->rawgrade);
+        $this->assertNull($grade->rawgrade);
+
+        // An older update must still be rejected after clearing.
+        $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [
+            'scoreGiven' => 10,
+            'scoreMaximum' => 10,
+            'activityProgress' => 'Completed',
+            'gradingProgress' => 'FullyGraded',
+            'timestamp' => '2024-08-07T20:54:36.736+00:00',
+        ]);
+        $this->assertEquals(409, $response->get_code());
 
         // A later final score must still be accepted.
         $response = $this->post_score($course->id, $typeid, $itemid, $user->id, [

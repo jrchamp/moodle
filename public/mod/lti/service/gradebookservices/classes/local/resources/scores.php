@@ -200,9 +200,9 @@ class scores extends resource_base {
         $hasscore = isset($score->scoreGiven);
         $isfinal = $score->gradingProgress === 'FullyGraded';
 
-        // Ignore partial scores unless the setting is enabled.
+        // Partial scores reset grades unless the setting is enabled.
         if ($hasscore && !$isfinal && !$this->get_service()->accepts_partial_scores()) {
-            return;
+            $score->scoreGiven = null;
         }
 
         $grade = \grade_grade::fetch(array('itemid' => $item->id, 'userid' => $score->userId));
