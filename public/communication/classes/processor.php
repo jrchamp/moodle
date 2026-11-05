@@ -50,6 +50,7 @@ class processor {
      * @param stdClass $instancedata The instance data object
      */
     protected function __construct(
+        /** @var stdClass The instance data object */
         private stdClass $instancedata,
     ) {
         $providercomponent = $this->instancedata->provider;
@@ -521,13 +522,12 @@ class processor {
     }
 
     /**
-     * Get communication instance id.
+     * Get the room user provider.
      *
      * @return room_user_provider
      */
     public function get_room_user_provider(): room_user_provider {
         $this->require_api_enabled();
-        $this->require_room_features();
         $this->require_room_user_features();
         return $this->provider;
     }
@@ -574,19 +574,11 @@ class processor {
     }
 
     /**
-     * Get communication instance id.
+     * Check whether the provider supports room user features.
      *
      * @return bool
      */
     public function supports_room_user_features(): bool {
-        if (!$this->supports_user_features()) {
-            return false;
-        }
-
-        if (!$this->supports_room_features()) {
-            return false;
-        }
-
         return ($this->provider instanceof room_user_provider);
     }
 
