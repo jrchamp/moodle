@@ -22,12 +22,14 @@ use communication_matrix\matrix_test_helper_trait;
 use core_communication\task\synchronise_provider_task;
 use core_communication\task\synchronise_providers_task;
 use core_communication\task\remove_members_from_room;
+use core_communication\task\update_room_membership_task;
 use core_communication\task\update_room_task;
 
 defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/../provider/matrix/tests/matrix_test_helper_trait.php');
 require_once(__DIR__ . '/communication_test_helper_trait.php');
+require_once(__DIR__ . '/fixtures/room_user_only_provider.php');
 
 /**
  * Class api_test to test the communication public api and its associated methods.
@@ -308,6 +310,52 @@ final class api_test extends \advanced_testcase {
         // Test the tasks added.
         $adhoctask = \core\task\manager::get_adhoc_tasks('\\core_communication\\task\\remove_members_from_room');
         $this->assertCount(2, $adhoctask);
+    }
+
+    /**
+     * Test room membership operations with a provider which only implements room_user_provider.
+     */
+    public function test_room_membership_with_room_user_only_provider(): void {
+        $this->resetAfterTest();
+        $course = $this->get_course();
+        $userids = [];
+        for ($i = 0; $i < 5; $i++) {
+            $userids[] = $this->get_user('Samplefn' . $i, 'Sampleln' . $i, 'sampleun' . $i)->id;
+        }
+
+        $communication = \core_communication\api::load_by_instance(
+            context: \core\context\course::instance($course->id),
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+        );
+
+        $processor = $communication->get_processor();
+        $provider = new \core_communication\tests\fixtures\room_user_only_provider();
+        $providerproperty = new \ReflectionProperty(processor::class, 'provider');
+        $providerproperty->setValue($processor, $provider);
+
+        $this->assertFalse($processor->supports_user_features());
+        $this->assertTrue($processor->supports_room_user_features());
+
+        // Adding members should create the user mappings and queue the task.
+        $communication->add_members_to_room($userids);
+        $adhoctask = \core\task\manager::get_adhoc_tasks(add_members_to_room_task::class);
+        $this->assertCount(1, $adhoctask);
+        $this->assertEqualsCanonicalizing($userids, $processor->get_all_userids_for_instance());
+
+        // Updating membership should reset the sync flag and queue the task.
+        $processor->mark_users_as_synced($userids);
+        $communication->update_room_membership($userids);
+        $adhoctask = \core\task\manager::get_adhoc_tasks(update_room_membership_task::class);
+        $this->assertCount(1, $adhoctask);
+        $this->assertEqualsCanonicalizing($userids, $processor->get_instance_userids());
+
+        // Removing members should flag the users for removal and queue the task.
+        $communication->remove_members_from_room($userids);
+        $adhoctask = \core\task\manager::get_adhoc_tasks(remove_members_from_room::class);
+        $this->assertCount(1, $adhoctask);
+        $this->assertEqualsCanonicalizing($userids, $processor->get_all_delete_flagged_userids());
     }
 
     /**

@@ -22,6 +22,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once(__DIR__ . '/../provider/matrix/tests/matrix_test_helper_trait.php');
 require_once(__DIR__ . '/communication_test_helper_trait.php');
+require_once(__DIR__ . '/fixtures/room_user_only_provider.php');
 
 /**
  * Class processor_test to test the communication internal api and its associated methods.
@@ -372,6 +373,31 @@ final class processor_test extends \advanced_testcase {
         );
 
         $this->assertInstanceOf(room_user_provider::class, $communicationprocessor->get_room_user_provider());
+    }
+
+    /**
+     * Test room user features with a provider which only implements room_user_provider.
+     */
+    public function test_room_user_features_with_room_user_only_provider(): void {
+        $this->resetAfterTest();
+        $course = $this->get_course();
+        $context = \core\context\course::instance($course->id);
+
+        $communicationprocessor = processor::load_by_instance(
+            context: $context,
+            component: 'core_course',
+            instancetype: 'coursecommunication',
+            instanceid: $course->id,
+        );
+
+        $provider = new \core_communication\tests\fixtures\room_user_only_provider();
+        $providerproperty = new \ReflectionProperty(processor::class, 'provider');
+        $providerproperty->setValue($communicationprocessor, $provider);
+
+        $this->assertFalse($communicationprocessor->supports_user_features());
+        $this->assertFalse($communicationprocessor->supports_room_features());
+        $this->assertTrue($communicationprocessor->supports_room_user_features());
+        $this->assertSame($provider, $communicationprocessor->get_room_user_provider());
     }
 
     /**
