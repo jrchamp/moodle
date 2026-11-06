@@ -2041,7 +2041,7 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
                     $anyAdvanced = false;
                     $anyError = false;
                     $lastHeaderAdvanced = isset($this->_advancedElements[$element->getName()]);
-                } elseif (isset($this->_advancedElements[$element->getName()])){
+                } else if (isset($this->_advancedElements[$element->getName() ?? ''])) {
                     $anyAdvanced = true;
                     if (isset($this->_errors[$element->getName()])) {
                         $anyError = true;
@@ -2078,7 +2078,7 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
                     $element->_generateId();
                     $headername = $element->getName();
                     $anyrequiredorerror = false;
-                } else if (in_array($element->getName(), $this->_required) || isset($this->_errors[$element->getName()])) {
+                } else if (in_array($element->getName(), $this->_required) || isset($this->_errors[$element->getName() ?? ''])) {
                     $anyrequiredorerror = true;
                 } else {
                     // Do not reset $anyrequiredorerror to false because we do not want any other element
@@ -2104,7 +2104,7 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
                 } else if ($anyrequiredorerror && (empty($headername) || $this->is_shown($headername))) {
                     // If any error or required field are present within the header, we need to expand it.
                     $this->setExpanded($headername, true, true);
-                } else if (!isset($this->_collapsibleElements[$headername])) {
+                } else if (!isset($this->_collapsibleElements[$headername ?? ''])) {
                     // Define element as collapsed by default.
                     $this->setExpanded($headername, false);
                 }
@@ -3062,7 +3062,7 @@ require([
         }
 
         foreach (array_keys($this->_elements) as $key) {
-            $name = $this->_elements[$key]->getName();
+            $name = $this->_elements[$key]->getName() ?? '';
             if ($this->_freezeAll || isset($elementList[$name])) {
                 $this->_elements[$key]->freeze();
                 $this->_elements[$key]->setPersistantFreeze(false);
