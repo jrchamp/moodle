@@ -24,20 +24,21 @@
 
 $string['communication'] = 'Communication';
 $string['communicationdisabled'] = 'Communication is disabled.';
+$string['communicationgrouproomnameformat'] = '{$a->groupname} ({$a->baseroomname})';
 $string['communicationprovidernotfound'] = 'The \'{$a}\' communication provider doesn\'t exist or is not recognised.';
 $string['communicationroomname'] = 'Room name';
 $string['communicationroomnameinfo'] = 'If the field is left blank, the course name is used as the room name.';
 $string['communicationroompending'] = 'Your {$a} room will be ready soon.';
 $string['communicationroomready'] = 'Your {$a} room is ready.';
-$string['communicationgrouproomnameformat'] = '{$a->groupname} ({$a->baseroomname})';
 $string['managecommunicationproviders'] = 'Manage communication providers';
 $string['nocommunicationinstance'] = 'No communication instance found.';
 $string['nocommunicationprovider'] = 'No communication provider found.';
 $string['nocommunicationselected'] = 'None';
 $string['privacy:metadata:communication_user'] = 'The communication user table stores the user ID and communication ID for communication provider mapping.';
 $string['privacy:metadata:communication_user:commid'] = 'The communication ID for user mapping';
-$string['privacy:metadata:communication_user:userid'] = 'The user ID for communication provider mapping for users';
+$string['privacy:metadata:communication_user:deleted'] = 'Whether the user is flagged for removal from the communication provider';
 $string['privacy:metadata:communication_user:synced'] = 'The user is synced with the provider or not';
+$string['privacy:metadata:communication_user:userid'] = 'The user ID for communication provider mapping for users';
 $string['selectcommunicationprovider'] = 'Provider';
 $string['selectcommunicationprovider_help'] = 'The tool available for chat and related communication methods.';
 $string['synchroniseproviders'] = 'Synchronise communication providers';
