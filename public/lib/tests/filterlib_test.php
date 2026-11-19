@@ -1064,4 +1064,183 @@ final class filterlib_test extends \advanced_testcase {
         $this->assertEquals(['test1a' => 'In root', 'test1b' => 'In root'], $actual['one']);
         $this->assertEquals([], $actual['three']);
     }
+
+    /**
+     * Create a depth-5 module context.
+     *
+     * @return array Contexts and course.
+     */
+    private function create_deep_context(): array {
+        $cat = $this->getDataGenerator()->create_category();
+        $subcat = $this->getDataGenerator()->create_category(['parent' => $cat->id]);
+        $course = $this->getDataGenerator()->create_course(['category' => $subcat->id]);
+        $module = $this->getDataGenerator()->create_module('page', ['course' => $course->id]);
+
+        return [
+            'catcontext' => \context_coursecat::instance($cat->id),
+            'subcatcontext' => \context_coursecat::instance($subcat->id),
+            'coursecontext' => \context_course::instance($course->id),
+            'modulecontext' => \context_module::instance($module->cmid),
+            'course' => $course,
+        ];
+    }
+
+    /**
+     * Enable the filter above the module.
+     *
+     * @param array $contexts Result of create_deep_context().
+     */
+    private function enable_filter_above_module(array $contexts): void {
+        filter_set_global_state('name', TEXTFILTER_ON);
+        filter_set_local_state('name', $contexts['catcontext']->id, TEXTFILTER_ON);
+        filter_set_local_state('name', $contexts['subcatcontext']->id, TEXTFILTER_ON);
+        filter_set_local_state('name', $contexts['coursecontext']->id, TEXTFILTER_ON);
+    }
+
+    /**
+     * Test that an explicit OFF at depth 5 overrides ON ancestors.
+     */
+    public function test_deep_context_explicit_off_wins(): void {
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $contexts = $this->create_deep_context();
+        $this->assertSame(5, $contexts['modulecontext']->depth);
+
+        $this->enable_filter_above_module($contexts);
+        filter_set_local_state('name', $contexts['modulecontext']->id, TEXTFILTER_OFF);
+
+        $this->assertSame([], filter_get_active_in_context($contexts['modulecontext']));
+    }
+
+    /**
+     * Test that an explicit ON at depth 5 overrides OFF ancestors.
+     */
+    public function test_deep_context_explicit_on_wins(): void {
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $contexts = $this->create_deep_context();
+        $this->assertSame(5, $contexts['modulecontext']->depth);
+
+        filter_set_global_state('name', TEXTFILTER_OFF);
+        filter_set_local_state('name', $contexts['catcontext']->id, TEXTFILTER_OFF);
+        filter_set_local_state('name', $contexts['subcatcontext']->id, TEXTFILTER_OFF);
+        filter_set_local_state('name', $contexts['coursecontext']->id, TEXTFILTER_OFF);
+        filter_set_local_state('name', $contexts['modulecontext']->id, TEXTFILTER_ON);
+
+        $this->assertSame(['name' => []], filter_get_active_in_context($contexts['modulecontext']));
+    }
+
+    /**
+     * Test that an available call does not change active results.
+     */
+    public function test_active_result_stable_across_available_call(): void {
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $contexts = $this->create_deep_context();
+
+        $this->enable_filter_above_module($contexts);
+        filter_set_local_state('name', $contexts['modulecontext']->id, TEXTFILTER_OFF);
+
+        $before = filter_get_active_in_context($contexts['modulecontext']);
+        filter_get_available_in_context($contexts['modulecontext']);
+        $after = filter_get_active_in_context($contexts['modulecontext']);
+        $this->assertSame($before, $after);
+    }
+
+    /**
+     * Test that a course preload does not change active results.
+     */
+    public function test_active_result_stable_across_course_preload(): void {
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $contexts = $this->create_deep_context();
+
+        $this->enable_filter_above_module($contexts);
+        filter_set_local_state('name', $contexts['modulecontext']->id, TEXTFILTER_OFF);
+
+        $before = filter_get_active_in_context($contexts['modulecontext']);
+        $modinfo = new \course_modinfo($contexts['course'], 2);
+        filter_preload_activities($modinfo);
+        $after = filter_get_active_in_context($contexts['modulecontext']);
+        $this->assertSame($before, $after);
+    }
+
+    /**
+     * Test that a local OFF implies the filter is not active.
+     */
+    public function test_available_local_off_implies_not_active(): void {
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $contexts = $this->create_deep_context();
+
+        $this->enable_filter_above_module($contexts);
+        filter_set_local_state('name', $contexts['modulecontext']->id, TEXTFILTER_OFF);
+
+        $this->assertSame([], filter_get_active_in_context($contexts['modulecontext']));
+        $available = filter_get_available_in_context($contexts['modulecontext']);
+        $this->assertEquals(TEXTFILTER_OFF, $available['name']->localstate);
+    }
+
+    /**
+     * Test that preload uses two queries and repeats use none.
+     */
+    public function test_preload_issues_constant_two_queries_for_many_activities(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $course = $this->getDataGenerator()->create_course();
+        $modules = [];
+        for ($i = 0; $i < 20; $i++) {
+            $modules[] = $this->getDataGenerator()->create_module('page', ['course' => $course->id]);
+        }
+        filter_set_global_state('name', TEXTFILTER_ON);
+
+        $modinfo = new \course_modinfo($course, 2);
+        foreach ($modules as $module) {
+            \context_module::instance($module->cmid);
+        }
+
+        $before = $DB->perf_get_reads();
+        filter_preload_activities($modinfo);
+        $this->assertSame(2, $DB->perf_get_reads() - $before);
+
+        $before = $DB->perf_get_reads();
+        filter_preload_activities($modinfo);
+        $this->assertSame(0, $DB->perf_get_reads() - $before);
+    }
+
+    /**
+     * Test that a fresh lookup uses two queries and repeats use none.
+     */
+    public function test_fresh_context_lookup_constant_against_row_volume(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        $this->remove_all_filters_from_config();
+        $course = $this->getDataGenerator()->create_course();
+        $module = $this->getDataGenerator()->create_module('page', ['course' => $course->id]);
+        $modulecontext = \context_module::instance($module->cmid);
+
+        filter_set_global_state('name', TEXTFILTER_ON);
+        for ($i = 0; $i < 10; $i++) {
+            filter_set_local_state('frog' . $i, $modulecontext->id, TEXTFILTER_ON);
+        }
+        for ($i = 0; $i < 10; $i++) {
+            $othermodule = $this->getDataGenerator()->create_module('page', ['course' => $course->id]);
+            $othercontext = \context_module::instance($othermodule->cmid);
+            for ($j = 0; $j < 10; $j++) {
+                filter_set_local_state('frog' . $i . '_' . $j, $othercontext->id, TEXTFILTER_ON);
+            }
+        }
+
+        $before = $DB->perf_get_reads();
+        $filters = filter_get_active_in_context($modulecontext);
+        $this->assertSame(2, $DB->perf_get_reads() - $before);
+        $this->assertArrayHasKey('name', $filters);
+
+        $before = $DB->perf_get_reads();
+        filter_get_active_in_context($modulecontext);
+        $this->assertSame(0, $DB->perf_get_reads() - $before);
+    }
 }

@@ -22,6 +22,8 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+use core\filter\request_cache;
+
 /** The states a filter can be in, stored in the filter_active table. */
 define('TEXTFILTER_ON', 1);
 /** The states a filter can be in, stored in the filter_active table. */
@@ -512,25 +514,16 @@ function filter_get_all_local_settings($contextid) {
 }
 
 /**
- * Check if filters have been preloaded for a given identifier.
+ * Check if a preload key is cached.
  *
- * @param string $preloadkey Preload identifier.
+ * Key prefixes: 'c' (course), 'a' (available state), 'x' (active list).
+ * The first call initialises the request cache.
+ *
+ * @param string $preloadkey Preload key, including its prefix.
  * @return bool
  */
-function filter_is_preloaded(string $preloadkey) {
-    global $FILTERLIB_PRIVATE;
-
-    if (!isset($FILTERLIB_PRIVATE)) {
-        $FILTERLIB_PRIVATE = (object) [
-            'active' => [],
-            'preloaded' => [],
-            'info' => [],
-            'rows' => [],
-            'configs' => [],
-        ];
-    }
-
-    return isset($FILTERLIB_PRIVATE->preloaded[$preloadkey]);
+function filter_is_preloaded(string $preloadkey): bool {
+    return request_cache::is_preloaded($preloadkey);
 }
 
 /**
@@ -539,8 +532,7 @@ function filter_is_preloaded(string $preloadkey) {
  * Call after changing filter_active or filter_config.
  */
 function filter_reset_request_cache(): void {
-    global $FILTERLIB_PRIVATE;
-    $FILTERLIB_PRIVATE = null;
+    request_cache::reset();
 }
 
 /**
@@ -556,30 +548,26 @@ function filter_reset_request_cache(): void {
  *      array(tex' => array())
  */
 function filter_get_active_in_context($context) {
-    global $FILTERLIB_PRIVATE;
-
     filter_preload_contexts($context, 'x' . $context->id);
 
-    return $FILTERLIB_PRIVATE->active[$context->id] ?? [];
+    return request_cache::get_active($context->id) ?? [];
 }
 
 /**
- * Preloads the list of active filters for all activities (modules) on the course
- * using two database queries.
+ * Preload active filters for all course activities.
+ *
+ * Delegates to filter_preload_contexts(), sharing its two queries and cache.
  *
  * @param course_modinfo $modinfo Course object from get_fast_modinfo
  */
 function filter_preload_activities(course_modinfo $modinfo) {
-    // Don't repeat preload.
     $preloadkey = 'c' . $modinfo->get_course_id();
     if (filter_is_preloaded($preloadkey)) {
         return;
     }
 
-    // Get course context.
     $coursecontext = context_course::instance($modinfo->get_course_id());
 
-    // Get contextids for all CMs.
     $cmcontextids = [];
     foreach ($modinfo->get_cms() as $cm) {
         $modulecontext = context_module::instance($cm->id);
@@ -590,186 +578,175 @@ function filter_preload_activities(course_modinfo $modinfo) {
 }
 
 /**
- * Preloads the active filters for a context (and optionally its child contexts)
- * into the FILTERLIB_PRIVATE cache.
+ * Preload active filters for a context and optional child contexts.
  *
- * The results are also cached under the info member of FILTERLIB_PRIVATE, keyed
- * by $maincontext->id, for reuse by e.g. filter_get_available_in_context().
+ * Raw rows are cached per context; resolved state is cached for the main context.
  *
- * @param context $maincontext Context to preload the active filters of.
- * @param string $preloadkey Unique key under which the results are cached.
- * @param array $childcontextids Also preload the active filters of these child contexts.
+ * @param context $maincontext Context to preload.
+ * @param string $preloadkey Cache key.
+ * @param array $childcontextids Child contexts to preload.
  */
-function filter_preload_contexts(context $maincontext, string $preloadkey, array $childcontextids = []) {
-    global $DB, $FILTERLIB_PRIVATE;
+function filter_preload_contexts(
+    context $maincontext,
+    string $preloadkey,
+    array $childcontextids = []
+): void {
+    global $DB;
 
     if (filter_is_preloaded($preloadkey)) {
         return;
     }
 
-    $FILTERLIB_PRIVATE->preloaded[$preloadkey] = true;
+    request_cache::mark_preloaded($preloadkey);
 
-    $parentcontextids = explode('/', substr($maincontext->path, 1));
+    $parentcontextids = array_map('intval', explode('/', substr($maincontext->path, 1)));
+    $childcontextids = array_map('intval', $childcontextids);
     $allcontextids = array_merge($parentcontextids, $childcontextids);
-    $cachecontextids = array_merge([$maincontext->id], $childcontextids);
+    $cachecontextids = array_merge([(int) $maincontext->id], $childcontextids);
 
-    // Cache the filter_active rows of any context not read yet, so each context
-    // is only queried once.
-    $missingactiveids = array_diff_key(
-        array_combine($allcontextids, $allcontextids),
-        $FILTERLIB_PRIVATE->rows
-    );
-    if (!empty($missingactiveids)) {
-        [$sql, $params] = $DB->get_in_or_equal(array_values($missingactiveids));
-        $newrows = $DB->get_records_select('filter_active', "contextid $sql", $params);
-        foreach ($newrows as $row) {
-            $FILTERLIB_PRIVATE->rows[$row->contextid][$row->id] = $row;
-        }
-    }
-
-    // Collect the rows we need from the cache.
-    $filteractives = [];
+    // Load missing active rows.
+    $missingcontextids = [];
     foreach ($allcontextids as $contextid) {
-        if (isset($FILTERLIB_PRIVATE->rows[$contextid])) {
-            $filteractives += $FILTERLIB_PRIVATE->rows[$contextid];
+        if (request_cache::get_active_rows($contextid) === null) {
+            $missingcontextids[] = $contextid;
+        }
+    }
+    if (!empty($missingcontextids)) {
+        [$sql, $params] = $DB->get_in_or_equal($missingcontextids);
+        $newrows = $DB->get_records_select('filter_active', "contextid $sql", $params);
+        $groupedrows = [];
+        foreach ($newrows as $row) {
+            $groupedrows[(int) $row->contextid][$row->filter] = $row;
+        }
+        foreach ($missingcontextids as $contextid) {
+            request_cache::set_active_rows($contextid, $groupedrows[$contextid] ?? []);
         }
     }
 
-    // Likewise cache the filter_config rows of any context not read yet.
-    $missingconfigids = array_diff_key(
-        array_combine($cachecontextids, $cachecontextids),
-        $FILTERLIB_PRIVATE->configs
-    );
-    if (!empty($missingconfigids)) {
-        [$sql, $params] = $DB->get_in_or_equal(array_values($missingconfigids));
-        $newconfigs = $DB->get_records_select('filter_config', "contextid $sql", $params);
-        foreach ($newconfigs as $row) {
-            $FILTERLIB_PRIVATE->configs[$row->contextid][$row->id] = $row;
-        }
-    }
-
-    // Collect the config rows we need from the cache.
-    $filterconfigs = [];
+    // Load missing config values.
+    $missingcontextids = [];
     foreach ($cachecontextids as $contextid) {
-        if (isset($FILTERLIB_PRIVATE->configs[$contextid])) {
-            $filterconfigs += $FILTERLIB_PRIVATE->configs[$contextid];
+        if (request_cache::get_config_values($contextid) === null) {
+            $missingcontextids[] = $contextid;
         }
     }
-
-    // Note: I was a bit surprised that filter_config only works for the
-    // most specific context (i.e. it does not need to be checked for main
-    // context if we only care about CMs) however basede on code in
-    // filter_get_active_in_context, this does seem to be correct.
-
-    // Build default active list. Initially this will be an array of
-    // filter name => active score (where an active score >0 means it's active).
-    $defaultactive = [];
-
-    // Also build list of filter_active rows below main level, by contextid.
-    $remainingactives = [];
-
-    // Array lists filters that are banned at top level.
-    $banned = [];
-
-    // Remember the order of filters from the system level.
-    $filterorder = [];
+    if (!empty($missingcontextids)) {
+        [$sql, $params] = $DB->get_in_or_equal($missingcontextids);
+        $newconfigs = $DB->get_records_select('filter_config', "contextid $sql", $params);
+        $groupedconfigs = [];
+        foreach ($newconfigs as $row) {
+            $groupedconfigs[(int) $row->contextid][$row->filter][$row->name] = $row->value;
+        }
+        foreach ($missingcontextids as $contextid) {
+            request_cache::set_config_values($contextid, $groupedconfigs[$contextid] ?? []);
+        }
+    }
 
     $depths = [];
-    foreach ($parentcontextids as $depth => $parentcontextid) {
-        $depths[$parentcontextid] = $depth + 1;
+    foreach ($parentcontextids as $depth => $contextid) {
+        $depths[$contextid] = $depth + 1;
     }
 
-    // Add any active filters in parent contexts to the array.
-    foreach ($filteractives as $row) {
-        if (isset($depths[$row->contextid])) {
-            $depth = $depths[$row->contextid];
+    // Deepest setting wins; DISABLED bans the filter.
+    $states = [];
+    $banned = [];
+    $filterorder = [];
+    $statedepth = [];
+    foreach ($parentcontextids as $contextid) {
+        foreach (request_cache::get_active_rows($contextid) ?? [] as $filter => $row) {
+            $depth = $depths[$contextid];
+            $active = (int) $row->active;
 
-            if ($depth == 1) {
-                $filterorder[$row->filter] = $row->sortorder;
+            if ($depth === 1) {
+                $filterorder[$filter] = (int) $row->sortorder;
             }
 
-            // Find entry.
-            $defaultactive += [$row->filter => 0];
-            // This maths copes with reading rows in any order. Turning on/off
-            // at site level counts 1, at next level down 4, at next level 9,
-            // then 16, etc. This means the deepest level always wins, except
-            // against the -9999 at top level.
-            $defaultactive[$row->filter] += $depth * $depth * $row->active;
-
-            if ($row->active == TEXTFILTER_DISABLED) {
-                $banned[$row->filter] = true;
+            if ($active === TEXTFILTER_DISABLED) {
+                $banned[$filter] = true;
+                continue;
             }
-        } else {
-            // Build list of other rows indexed by filter name.
-            $remainingactives[$row->contextid][$row->filter] = $row;
+            if ($active === TEXTFILTER_INHERIT) {
+                continue;
+            }
+
+            if (!isset($statedepth[$filter]) || $depth > $statedepth[$filter]) {
+                $statedepth[$filter] = $depth;
+                $states[$filter] = ($active > 0);
+            }
         }
     }
 
-    // Filters must be applied in order that is set at the system level.
-    uksort(
-        $defaultactive,
-        function ($a, $b) use ($filterorder) {
-            // In case a filter has no system level sortorder, sort it last.
-            return ($filterorder[$a] ?? PHP_INT_MAX) <=> ($filterorder[$b] ?? PHP_INT_MAX);
-        }
-    );
+    // Sort by system order.
+    $sortfilters = function (array &$filters) use ($filterorder): void {
+        uksort(
+            $filters,
+            function ($a, $b) use ($filterorder) {
+                // In case a filter has no system level sortorder, sort it last.
+                return ($filterorder[$a] ?? PHP_INT_MAX) <=> ($filterorder[$b] ?? PHP_INT_MAX);
+            }
+        );
+    };
+    $sortfilters($states);
 
-    // Cache the raw results by main context, so later preloads of it only add
-    // the results for their new children.
-    $contextdata = $FILTERLIB_PRIVATE->info[$maincontext->id] ?? [];
-    $FILTERLIB_PRIVATE->info[$maincontext->id] = [
-        'defaultactive' => $defaultactive,
+    request_cache::set_info((int) $maincontext->id, (object) [
+        'states' => $states,
         'banned' => $banned,
         'filterorder' => $filterorder,
-        // Keep the overrides of any previously covered children.
-        'remainingactives' => ($contextdata['remainingactives'] ?? []) + $remainingactives,
-    ];
+    ]);
 
-    // Mark the children as covered by this preload of their parent, so
-    // filter_get_available_in_context() can reuse the cached parent state.
+    $baseactive = [];
+    foreach ($states as $filter => $isactive) {
+        if ($isactive && !isset($banned[$filter])) {
+            $baseactive[$filter] = [];
+        }
+    }
+
+    // Main context config.
+    $mainactive = $baseactive;
+    foreach (request_cache::get_config_values((int) $maincontext->id) ?? [] as $filter => $values) {
+        if (isset($mainactive[$filter])) {
+            $mainactive[$filter] = $values;
+        }
+    }
+    request_cache::set_active((int) $maincontext->id, $mainactive);
+    request_cache::mark_preloaded('x' . $maincontext->id);
+
+    // Child rows override inherited state.
     foreach ($childcontextids as $contextid) {
-        $FILTERLIB_PRIVATE->preloaded['a' . $contextid] = true;
-    }
+        $contextactive = $baseactive;
+        $contextbanned = $banned;
 
-    // Build filter_active lists for each child context.
-    foreach ($cachecontextids as $contextid) {
-        // Copy default list.
-        $contextactive = $defaultactive;
+        foreach (request_cache::get_active_rows($contextid) ?? [] as $filter => $row) {
+            $active = (int) $row->active;
 
-        // Are there any changes to the active list?
-        if (isset($remainingactives[$contextid])) {
-            foreach ($remainingactives[$contextid] as $row) {
-                if ($row->active > 0 && empty($banned[$row->filter])) {
-                    // If it's marked active for specific context, add entry
-                    // (doesn't matter if one exists already).
-                    $contextactive[$row->filter] = TEXTFILTER_ON;
-                } else {
-                    // If it's marked inactive, remove entry (doesn't matter
-                    // if it doesn't exist).
-                    $contextactive[$row->filter] = TEXTFILTER_OFF;
-                }
-            }
-        }
-
-        // We can safely remove inactive filters now without breaking filter order.
-        foreach ($contextactive as $filter => $score) {
-            if ($score <= 0) {
+            if ($active === TEXTFILTER_DISABLED) {
+                $contextbanned[$filter] = true;
                 unset($contextactive[$filter]);
-            } else {
+                continue;
+            }
+            if ($active === TEXTFILTER_INHERIT) {
+                continue;
+            }
+            if (isset($contextbanned[$filter])) {
+                unset($contextactive[$filter]);
+            } else if ($active > 0) {
                 $contextactive[$filter] = [];
+            } else {
+                unset($contextactive[$filter]);
             }
         }
 
-        // Save the active list and mark it as preloaded.
-        $FILTERLIB_PRIVATE->active[$contextid] = $contextactive;
-        $FILTERLIB_PRIVATE->preloaded['x' . $contextid] = true;
-    }
-
-    // Process all config rows to add config data to these entries.
-    foreach ($filterconfigs as $row) {
-        if (isset($FILTERLIB_PRIVATE->active[$row->contextid][$row->filter])) {
-            $FILTERLIB_PRIVATE->active[$row->contextid][$row->filter][$row->name] = $row->value;
+        // Child context config.
+        foreach (request_cache::get_config_values($contextid) ?? [] as $filter => $values) {
+            if (isset($contextactive[$filter])) {
+                $contextactive[$filter] = $values;
+            }
         }
+        $sortfilters($contextactive);
+
+        request_cache::set_active($contextid, $contextactive);
+        request_cache::mark_preloaded('x' . $contextid);
+        request_cache::mark_preloaded('a' . $contextid);
     }
 }
 
@@ -785,8 +762,6 @@ function filter_preload_contexts(context $maincontext, string $preloadkey, array
  *      ->inheritedstate TEXTFILTER_ON/OFF - the state that will be used if localstate is set to TEXTFILTER_INHERIT.
  */
 function filter_get_available_in_context($context) {
-    global $FILTERLIB_PRIVATE;
-
     if ($context instanceof context_system) {
         throw new coding_exception('filter_get_available_in_context cannot be called with the system context.');
     }
@@ -794,41 +769,34 @@ function filter_get_available_in_context($context) {
     $parentcontext = $context->get_parent_context();
     $preloadkey = 'a' . $context->id;
 
-    // Reuse the cached parent state if this context was already covered by an
-    // earlier preload, otherwise preload it including the local overrides.
+    // Reuse an earlier preload where possible.
     if (!filter_is_preloaded($preloadkey)) {
         filter_preload_contexts($parentcontext, $preloadkey, [$context->id]);
     }
 
-    $info = $FILTERLIB_PRIVATE->info[$parentcontext->id] ?? [];
-    $defaultactive = $info['defaultactive'] ?? [];
-    $banned = $info['banned'] ?? [];
-    $remainingactives = $info['remainingactives'] ?? [];
-    $filterorder = $info['filterorder'] ?? [];
+    $info = request_cache::get_info((int) $parentcontext->id);
+    if ($info === null) {
+        return [];
+    }
 
     $result = [];
-    foreach ($defaultactive as $filter => $score) {
-        if (isset($banned[$filter])) {
+    foreach ($info->states as $filter => $isactive) {
+        if (isset($info->banned[$filter])) {
             continue;
         }
 
-        $inheritedstate = ($score > 0) ? TEXTFILTER_ON : TEXTFILTER_OFF;
-
         $localstate = TEXTFILTER_INHERIT;
-        if (isset($remainingactives[$context->id][$filter])) {
-            $localstate = (int) $remainingactives[$context->id][$filter]->active;
+        $localrow = request_cache::get_active_row((int) $context->id, $filter);
+        if ($localrow !== null) {
+            $localstate = (int) $localrow->active;
         }
 
         $result[$filter] = (object) [
             'filter' => $filter,
             'localstate' => $localstate,
-            'inheritedstate' => $inheritedstate,
+            'inheritedstate' => $isactive ? TEXTFILTER_ON : TEXTFILTER_OFF,
         ];
     }
-
-    uksort($result, function ($a, $b) use ($filterorder) {
-        return ($filterorder[$a] ?? PHP_INT_MAX) <=> ($filterorder[$b] ?? PHP_INT_MAX);
-    });
 
     return $result;
 }
