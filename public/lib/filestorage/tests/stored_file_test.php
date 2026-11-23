@@ -194,4 +194,83 @@ final class stored_file_test extends advanced_testcase {
         $file->sync_external_file();
     }
 
+    /**
+     * Test the stored_file serialise/unserialise round-trip (MDL-89053).
+     */
+    public function test_serialise_unserialise_roundtrip(): void {
+        $this->resetAfterTest();
+
+        $filerecord = [
+            'contextid' => context_system::instance()->id,
+            'component' => 'core',
+            'filearea' => 'unittest',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => 'test_roundtrip.txt',
+        ];
+        $fs = get_file_storage();
+        $storedfile = $fs->create_file_from_string($filerecord, 'hello world');
+
+        $copy = fullclone($storedfile);
+
+        $this->assertInstanceOf(\stored_file::class, $copy);
+        $this->assertSame($storedfile->get_id(), $copy->get_id());
+        $this->assertSame($storedfile->get_contenthash(), $copy->get_contenthash());
+        $this->assertSame($storedfile->get_filename(), $copy->get_filename());
+        $this->assertSame($storedfile->get_filesize(), $copy->get_filesize());
+        $this->assertFalse($copy->is_directory());
+        $this->assertSame('hello world', $copy->get_content());
+
+        // The rebuilt object has a live file storage and file system attached.
+        $fsprop = new \ReflectionProperty(\stored_file::class, 'fs');
+        $filesystemprop = new \ReflectionProperty(\stored_file::class, 'filesystem');
+        $this->assertNotNull($fsprop->getValue($copy));
+        $this->assertNotNull($filesystemprop->getValue($copy));
+    }
+
+    /**
+     * Test that a legacy __sleep() payload rebuilds a working stored_file (MDL-89053).
+     */
+    public function test_unserialise_tolerates_legacy_sleep_blob(): void {
+        $this->resetAfterTest();
+
+        $filerecord = [
+            'contextid' => context_system::instance()->id,
+            'component' => 'core',
+            'filearea' => 'unittest',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => 'test_legacy.txt',
+        ];
+        $fs = get_file_storage();
+        $storedfile = $fs->create_file_from_string($filerecord, 'legacy hello');
+
+        // Take the private file_record from a live object to build a legacy payload.
+        $frecord = (new \ReflectionProperty(\stored_file::class, 'file_record'))->getValue($storedfile);
+
+        $copy = unserialize($this->legacy_sleep_blob(\stored_file::class, [
+            "\0stored_file\0file_record" => $frecord,
+        ]));
+
+        $this->assertInstanceOf(\stored_file::class, $copy);
+        $this->assertSame($storedfile->get_id(), $copy->get_id());
+        $this->assertSame($storedfile->get_contenthash(), $copy->get_contenthash());
+        $this->assertSame('legacy hello', $copy->get_content());
+    }
+
+    /**
+     * Build a payload in the old __sleep() wire format.
+     *
+     * @param string $class fully qualified class name to instantiate
+     * @param array $props map of serialized key name (e.g. "\0*\0name") to value
+     * @return string the serialized blob
+     */
+    private static function legacy_sleep_blob(string $class, array $props): string {
+        $blob = 'O:' . strlen($class) . ':"' . $class . '":' . count($props) . ':{';
+        foreach ($props as $key => $value) {
+            $blob .= 's:' . strlen($key) . ':"' . $key . '";' . serialize($value);
+        }
+        return $blob . '}';
+    }
+
 }
