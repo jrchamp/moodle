@@ -43,6 +43,8 @@ require_once($CFG->dirroot . '/webservice/lib.php');
  * @copyright  2016 Jun Pataleta <jun@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+#[\PHPUnit\Framework\Attributes\CoversClass(\webservice::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\webservice_base_server::class)]
 final class lib_test extends \advanced_testcase {
 
     /**
@@ -142,6 +144,93 @@ final class lib_test extends \advanced_testcase {
 
             // Check description.
             $this->assertEquals($function->description, $method->description);
+        }
+    }
+
+    /**
+     * Data provider for {@see test_restricted_service_validuntil()}.
+     *
+     * @return array
+     */
+    public static function restricted_service_validuntil_provider(): array {
+        return [
+            'No expiry (NULL)' => [null, true],
+            'No expiry (zero)' => [0, true],
+            'Expires in the future' => [time() + DAYSECS, true],
+            'Expired' => [time() - DAYSECS, false],
+        ];
+    }
+
+    /**
+     * Test that a restricted service is only available while the authorised user's validuntil allows it.
+     *
+     * @param int|null $validuntil The validuntil value for the authorised user.
+     * @param bool $expectedallowed Whether access should be allowed.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('restricted_service_validuntil_provider')]
+    public function test_restricted_service_validuntil(?int $validuntil, bool $expectedallowed): void {
+        global $DB, $USER;
+
+        $this->resetAfterTest();
+
+        // Use an administrator so the user has the webservice/rest:use capability.
+        $this->setAdminUser();
+
+        // Create a restricted service containing one external function.
+        $serviceid = $DB->insert_record('external_services', (object) [
+            'name' => 'Restricted test service',
+            'shortname' => 'restrictedtestservice',
+            'enabled' => 1,
+            'restrictedusers' => 1,
+            'component' => 'moodle',
+            'timecreated' => time(),
+            'downloadfiles' => 1,
+            'uploadfiles' => 1,
+        ]);
+
+        $DB->insert_record('external_services_functions', (object) [
+            'externalserviceid' => $serviceid,
+            'functionname' => 'core_course_get_contents',
+        ]);
+
+        // Authorise the user for the service using the validuntil value under test.
+        $DB->insert_record('external_services_users', (object) [
+            'externalserviceid' => $serviceid,
+            'userid' => $USER->id,
+            'iprestriction' => null,
+            'validuntil' => $validuntil,
+            'timecreated' => time(),
+        ]);
+
+        // Create a token for the service.
+        $token = (object) [
+            'token' => 'restrictedservicetoken',
+            'tokentype' => EXTERNAL_TOKEN_PERMANENT,
+            'userid' => $USER->id,
+            'externalserviceid' => $serviceid,
+            'contextid' => \context_system::instance()->id,
+            'creatorid' => $USER->id,
+            'timecreated' => time(),
+            'name' => \core_external\util::generate_token_name(),
+        ];
+        $DB->insert_record('external_tokens', $token);
+
+        // The init_service_class() method should only expose the service while the user authorisation is valid.
+        $dummy = new webservice_dummy(WEBSERVICE_AUTHMETHOD_PERMANENT_TOKEN);
+        $dummy->set_token($token->token);
+        $dummy->run();
+
+        // The load_function_info() method must apply the same validuntil restriction.
+        $functiondummy = new webservice_dummy(WEBSERVICE_AUTHMETHOD_PERMANENT_TOKEN);
+        $functiondummy->set_token($token->token);
+
+        if ($expectedallowed) {
+            $this->assertCount(1, $dummy->get_service_methods());
+            $functiondummy->run_load_function_info('core_course_get_contents');
+        } else {
+            $this->assertCount(0, $dummy->get_service_methods());
+            $this->expectException(\webservice_access_exception::class);
+            $functiondummy->run_load_function_info('core_course_get_contents');
         }
     }
 
@@ -431,6 +520,17 @@ class webservice_dummy extends \webservice_base_server {
     public function run() {
         $this->authenticate_user();
         $this->init_service_class();
+    }
+
+    /**
+     * Authenticate the user and run load_function_info() for the given function.
+     *
+     * @param string $functionname The external function name.
+     */
+    public function run_load_function_info(string $functionname): void {
+        $this->authenticate_user();
+        $this->functionname = $functionname;
+        $this->load_function_info();
     }
 
     /**
