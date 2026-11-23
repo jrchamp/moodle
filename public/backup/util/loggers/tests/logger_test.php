@@ -390,6 +390,126 @@ final class logger_test extends \basic_testcase {
 
         unlink($backuptempdir . '/test_backup_id.log');
     }
+
+    /**
+     * Test the file_logger serialise/unserialise round-trip (MDL-89053).
+     */
+    public function test_file_logger_serialise_unserialise_roundtrip(): void {
+        global $CFG;
+
+        $file = $CFG->tempdir . '/test/test_file_logger_serialise.txt';
+        @remove_dir(dirname($file));
+        if (!check_dir_exists(dirname($file), true, true)) {
+            throw new \moodle_exception('error_creating_temp_dir', 'error', dirname($file));
+        }
+
+        $lo = new file_logger(backup::LOG_ERROR, true, true, $file);
+        $this->assertTrue($lo->process('first message', backup::LOG_ERROR));
+
+        // Serialising must close the source handle and restore the state on the copy.
+        $fhandle = new \ReflectionProperty(file_logger::class, 'fhandle');
+        $copy = fullclone($lo);
+        $this->assertNull($fhandle->getValue($lo));
+
+        $this->assertInstanceOf(file_logger::class, $copy);
+        $level = new \ReflectionProperty(base_logger::class, 'level');
+        $showdate = new \ReflectionProperty(base_logger::class, 'showdate');
+        $showlevel = new \ReflectionProperty(base_logger::class, 'showlevel');
+        $fullpath = new \ReflectionProperty(file_logger::class, 'fullpath');
+        $this->assertSame(backup::LOG_ERROR, $level->getValue($copy));
+        $this->assertTrue($showdate->getValue($copy));
+        $this->assertTrue($showlevel->getValue($copy));
+        $this->assertSame($file, $fullpath->getValue($copy));
+        $this->assertIsResource($fhandle->getValue($copy));
+
+        // The resumed logger is still able to log into the same file.
+        $this->assertTrue($copy->process('second message', backup::LOG_ERROR));
+        $copy->destroy();
+
+        $contents = file_get_contents($file);
+        $this->assertStringContainsString('first message', $contents);
+        $this->assertStringContainsString('second message', $contents);
+
+        @unlink($file);
+        @remove_dir(dirname($file));
+    }
+
+    /**
+     * Test that unserialising reconstructs a missing log directory (MDL-89053).
+     */
+    public function test_file_logger_unserialise_reconstructs_missing_path(): void {
+        global $CFG;
+
+        $file = $CFG->tempdir . '/test_file_logger_serialise_missing/backup.log';
+        @remove_dir(dirname($file));
+        if (!check_dir_exists(dirname($file), true, true)) {
+            throw new \moodle_exception('error_creating_temp_dir', 'error', dirname($file));
+        }
+
+        $lo = new file_logger(backup::LOG_ERROR, false, false, $file);
+        $blob = serialize($lo);
+
+        // Simulate the log directory having been purged before resume.
+        @remove_dir(dirname($file));
+
+        $copy = unserialize($blob);
+
+        $fullpath = new \ReflectionProperty(file_logger::class, 'fullpath');
+        $fhandle = new \ReflectionProperty(file_logger::class, 'fhandle');
+
+        $reconstructed = $fullpath->getValue($copy);
+        $this->assertNotSame($file, $reconstructed);
+        $this->assertSame(rtrim(make_backup_temp_directory(''), '/'), dirname($reconstructed));
+        $this->assertIsResource($fhandle->getValue($copy));
+
+        $copy->destroy();
+        @unlink($reconstructed);
+    }
+
+    /**
+     * Test that a legacy __sleep() payload restores a working logger (MDL-89053).
+     */
+    public function test_file_logger_unserialise_tolerates_legacy_sleep_blob(): void {
+        global $CFG;
+
+        $file = $CFG->tempdir . '/test/test_file_logger_legacy.txt';
+        @remove_dir(dirname($file));
+        if (!check_dir_exists(dirname($file), true, true)) {
+            throw new \moodle_exception('error_creating_temp_dir', 'error', dirname($file));
+        }
+
+        $copy = unserialize($this->legacy_sleep_blob(\file_logger::class, [
+            "\0*\0level" => backup::LOG_ERROR,
+            "\0*\0showdate" => true,
+            "\0*\0showlevel" => true,
+            "\0*\0next" => null,
+            "\0*\0fullpath" => $file,
+        ]));
+
+        $this->assertInstanceOf(\file_logger::class, $copy);
+        $this->assertTrue($copy->process('legacy message', backup::LOG_ERROR));
+        $copy->destroy();
+
+        $this->assertStringContainsString('legacy message', file_get_contents($file));
+
+        @unlink($file);
+        @remove_dir(dirname($file));
+    }
+
+    /**
+     * Build a payload in the old __sleep() wire format.
+     *
+     * @param string $class fully qualified class name to instantiate
+     * @param array $props map of serialized key name (e.g. "\0*\0name") to value
+     * @return string the serialized blob
+     */
+    private static function legacy_sleep_blob(string $class, array $props): string {
+        $blob = 'O:' . strlen($class) . ':"' . $class . '":' . count($props) . ':{';
+        foreach ($props as $key => $value) {
+            $blob .= 's:' . strlen($key) . ':"' . $key . '";' . serialize($value);
+        }
+        return $blob . '}';
+    }
 }
 
 

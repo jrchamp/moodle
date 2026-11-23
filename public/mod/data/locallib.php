@@ -254,21 +254,42 @@ class data_portfolio_caller extends portfolio_module_caller_base {
     }
 
     /**
-     * @global object
-     * @return bool|void
+     * Restore the complete serialised state without re-querying the database.
+     *
+     * Calling load_data() here would be slower and would rebuild the records from
+     * the resuming context instead of the user who started the export.
+     *
+     * @param array $data Array of object properties.
      */
-    public function __wakeup() {
+    public function __unserialize(array $data): void {
+        // Strip PHP's null-byte prefixes from protected/private property names in
+        // legacy payloads, for example "\0*\0recordid".
+        foreach ($data as $name => $value) {
+            $parts = explode("\x00", (string) $name);
+            $name = end($parts);
+            if (property_exists($this, $name)) {
+                $this->{$name} = $value;
+            }
+        }
+
         global $CFG;
         if (empty($CFG)) {
-            return true; // too early yet
+            return; // Too early yet.
         }
-        foreach ($this->fieldtypes as $key => $field) {
-            $filepath = $CFG->dirroot . '/mod/data/field/' . $field .'/field.class.php';
-            if (!file_exists($filepath)) {
-                continue;
+
+        // Rebuild field objects if their classes were not loaded during unserialization.
+        if (is_array($this->fieldtypes) && is_array($this->fields)) {
+            foreach ($this->fieldtypes as $key => $field) {
+                if (!isset($this->fields[$key])) {
+                    continue;
+                }
+                $filepath = $CFG->dirroot . '/mod/data/field/' . $field . '/field.class.php';
+                if (!file_exists($filepath)) {
+                    continue;
+                }
+                require_once($filepath);
+                $this->fields[$key] = fullclone($this->fields[$key]);
             }
-            require_once($filepath);
-            $this->fields[$key] = unserialize(serialize($this->fields[$key]));
         }
     }
 

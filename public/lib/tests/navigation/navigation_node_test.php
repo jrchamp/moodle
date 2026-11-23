@@ -457,4 +457,48 @@ final class navigation_node_test extends navigation_testcase {
                 ],
         ];
     }
+
+    /**
+     * Test that a node round-trip keeps its state and resets page-specific state.
+     */
+    public function test_node_serialise_unserialise_roundtrip(): void {
+        $node = new navigation_node(['text' => 'mytext', 'key' => 'mykey']);
+        $node->forceopen = true;
+        $node->isactive = true;
+        $node->add_class('myclass');
+        $node->add_class('active_tree_node');
+        $node->add_node(new navigation_node(['text' => 'child', 'key' => 'childkey']));
+
+        $copy = fullclone($node);
+
+        $this->assertInstanceOf(navigation_node::class, $copy);
+
+        // Provided node state survives the round-trip.
+        $this->assertSame('mytext', $copy->get_content());
+        $this->assertSame('mykey', $copy->key);
+        $this->assertTrue($copy->has_children());
+        $this->assertSame('child', $copy->find('childkey', navigation_node::TYPE_CUSTOM)->get_content());
+        $this->assertContains('myclass', $copy->classes);
+
+        // Page-specific state is re-initialised on unserialisation.
+        $this->assertFalse($copy->forceopen);
+        $this->assertFalse($copy->isactive);
+        $this->assertNotContains('active_tree_node', $copy->classes);
+    }
+
+    /**
+     * Test that a navigation_node subclass keeps its protected/private state (MDL-89053).
+     */
+    public function test_node_serialise_unserialise_preserves_subclass_state(): void {
+        require_once(__DIR__ . '/../fixtures/serialisable_navigation_node.php');
+
+        $node = new serialisable_navigation_node(['text' => 'something']);
+        $node->set_protecteddata('CHANGED-protected');
+        $node->set_privatedata('CHANGED-private');
+
+        $copy = fullclone($node);
+
+        $this->assertSame('CHANGED-protected', $copy->get_protecteddata());
+        $this->assertSame('CHANGED-private', $copy->get_privatedata());
+    }
 }
