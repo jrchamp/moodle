@@ -5138,6 +5138,12 @@ class restore_create_categories_and_questions extends restore_structure_step {
     /** @var array $cachedcategory store a question category */
     protected $cachedcategory = null;
 
+    /** @var bool[] New question category ids (as keys) created by this restore. */
+    protected $createdcategories = [];
+
+    /** @var bool[] New question bank entry ids (as keys) created by this restore. */
+    protected $createdqbes = [];
+
     /** @var stdClass the last question_bank_entry seen during the restore. Processed when we get to a question. */
     protected $latestqbe;
 
@@ -5268,6 +5274,7 @@ class restore_create_categories_and_questions extends restore_structure_step {
 
             // Let's create the question_category and save mapping.
             $newitemid = $DB->insert_record('question_categories', $data);
+            $this->createdcategories[$newitemid] = true;
             $this->set_mapping('question_category', $oldid, $newitemid);
             // Also annotate them as question_category_created, we need
             // that later when remapping parents.
@@ -5402,10 +5409,18 @@ class restore_create_categories_and_questions extends restore_structure_step {
             if (empty($this->latestqbe->newid)) {
                 $this->latestqbe->oldid = $this->latestqbe->id;
                 $targetcategoryid = $this->get_new_parentid('question_category');
-                $qbeexistsintargetcategory = !$before40 && $DB->record_exists('question_bank_entries', [
-                    'id' => $this->latestqbe->id,
-                    'questioncategoryid' => $targetcategoryid,
-                ]);
+                $qbeexistsintargetcategory = false;
+                if (
+                    !$before40
+                    && $this->task->is_samesite()
+                    && $targetcategoryid
+                    && empty($this->createdcategories[$targetcategoryid])
+                ) {
+                    $qbeexistsintargetcategory = $DB->record_exists('question_bank_entries', [
+                        'id' => $this->latestqbe->id,
+                        'questioncategoryid' => $targetcategoryid,
+                    ]);
+                }
 
                 if ($this->task->is_samesite() && $targetcategoryid && $qbeexistsintargetcategory) {
                     $this->latestqbe->newid = $this->latestqbe->id;
@@ -5431,6 +5446,7 @@ class restore_create_categories_and_questions extends restore_structure_step {
                     }
 
                     $this->latestqbe->newid = $DB->insert_record('question_bank_entries', $this->latestqbe);
+                    $this->createdqbes[$this->latestqbe->newid] = true;
                 }
                 $this->set_mapping('question_bank_entry', $this->latestqbe->oldid, $this->latestqbe->newid);
             }
@@ -5452,55 +5468,60 @@ class restore_create_categories_and_questions extends restore_structure_step {
             $oldqvid = $this->latestversion->id;
             $this->latestversion->questionbankentryid = $this->latestqbe->newid;
             $this->latestversion->questionid = $newitemid;
-            // In case the backed up version was deleted and a new one created in its place, increase the version numbers of
-            // conflicting versions to make room for this one.
-            $transaction = $DB->start_delegated_transaction();
-            if (
-                $DB->record_exists(
-                    'question_versions',
-                    [
-                        'questionbankentryid' => $this->latestversion->questionbankentryid,
-                        'version' => $this->latestversion->version,
-                    ],
-                )
-            ) {
-                // We'll update each higher version and any references one-at-a-time, starting with the highest, to avoid
-                // creating a duplicate questionbankentryid-version combination in question_versions.
-                $moveversions = $DB->get_records_select(
-                    'question_versions',
-                    'questionbankentryid = :questionbankentryid AND version >= :oldversion',
-                    [
-                        'questionbankentryid' => $this->latestversion->questionbankentryid,
-                        'oldversion' => $this->latestversion->version,
-                    ],
-                    'version DESC',
-                );
-                foreach ($moveversions as $moveversion) {
-                    $DB->set_field(
+            // A question bank entry created by this restore cannot have conflicting versions yet.
+            if (isset($this->createdqbes[$this->latestversion->questionbankentryid])) {
+                $newqvid = $DB->insert_record('question_versions', $this->latestversion);
+            } else {
+                // In case the backed up version was deleted and a new one created in its place, increase the version numbers
+                // of conflicting versions to make room for this one.
+                $transaction = $DB->start_delegated_transaction();
+                if (
+                    $DB->record_exists(
                         'question_versions',
-                        'version',
-                        $moveversion->version + 1,
                         [
-                            'questionbankentryid' => $moveversion->questionbankentryid,
-                            'version' => $moveversion->version,
-                        ]
-                    );
-                    $DB->set_field(
-                        'question_references',
-                        'version',
-                        $moveversion->version + 1,
+                            'questionbankentryid' => $this->latestversion->questionbankentryid,
+                            'version' => $this->latestversion->version,
+                        ],
+                    )
+                ) {
+                    // We'll update each higher version and any references one-at-a-time, starting with the highest, to avoid
+                    // creating a duplicate questionbankentryid-version combination in question_versions.
+                    $moveversions = $DB->get_records_select(
+                        'question_versions',
+                        'questionbankentryid = :questionbankentryid AND version >= :oldversion',
                         [
-                            'questionbankentryid' => $moveversion->questionbankentryid,
-                            'version' => $moveversion->version,
-                        ]
+                            'questionbankentryid' => $this->latestversion->questionbankentryid,
+                            'oldversion' => $this->latestversion->version,
+                        ],
+                        'version DESC',
                     );
+                    foreach ($moveversions as $moveversion) {
+                        $DB->set_field(
+                            'question_versions',
+                            'version',
+                            $moveversion->version + 1,
+                            [
+                                'questionbankentryid' => $moveversion->questionbankentryid,
+                                'version' => $moveversion->version,
+                            ]
+                        );
+                        $DB->set_field(
+                            'question_references',
+                            'version',
+                            $moveversion->version + 1,
+                            [
+                                'questionbankentryid' => $moveversion->questionbankentryid,
+                                'version' => $moveversion->version,
+                            ]
+                        );
+                    }
+                    // Ensure the nextversion value has been initialised, and increment it to account for the additional version.
+                    versions::get_next_version($this->latestversion->questionbankentryid);
                 }
-                // Ensure the nextversion value has been initialised, and increment it to account for the additional version.
-                versions::get_next_version($this->latestversion->questionbankentryid);
+                $newqvid = $DB->insert_record('question_versions', $this->latestversion);
+                $transaction->allow_commit();
             }
-            $newqvid = $DB->insert_record('question_versions', $this->latestversion);
             $this->set_mapping('question_versions', $oldqvid, $newqvid);
-            $transaction->allow_commit();
         } else {
             // By performing this set_mapping() we make get_old/new_parentid() to work for all the
             // children elements of the 'question' one (so qtype plugins will know the question they belong to).
