@@ -97,6 +97,9 @@ class mock_restore_task_basepath extends restore_task {
     /** @var string name of the mod plugin (activity) being used in the tests */
     private $modulename;
 
+    /** @var string|null restore id to use when no restore plan is available */
+    private $restoreid;
+
     public function build() {
         // Nothing to do.
     }
@@ -111,6 +114,24 @@ class mock_restore_task_basepath extends restore_task {
 
     public function get_modulename() {
         return $this->modulename;
+    }
+
+    /**
+     * Set a fixed restore id for tests that do not have a restore plan.
+     *
+     * @param string $restoreid
+     */
+    public function set_restoreid(string $restoreid): void {
+        $this->restoreid = $restoreid;
+    }
+
+    /**
+     * Get the restore id.
+     *
+     * @return string
+     */
+    public function get_restoreid() {
+        return $this->restoreid ?? parent::get_restoreid();
     }
 }
 

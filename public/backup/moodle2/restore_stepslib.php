@@ -5547,8 +5547,9 @@ class restore_create_categories_and_questions extends restore_structure_step {
         if ($questioncreated) {
             // Adjust some columns
             $data->questionid = $newquestionid;
-            // Insert record
-            $newitemid = $DB->insert_record('question_hints', $data);
+            // Queue the record, the hints are inserted in bulk and their mappings are stored afterwards.
+            $this->queue_insert_record('question_hints', $data, 'question_hint', $oldid, 'questionid');
+            return;
 
         // The question existed, we need to map the existing question_hints
         } else {
@@ -6685,14 +6686,14 @@ trait restore_question_reference_data_trait {
      * @param array $data the data from the XML file.
      */
     public function process_question_reference($data) {
-        global $DB;
         $data = (object) $data;
         $data->usingcontextid = $this->get_mappingid('context', $data->usingcontextid);
         $data->itemid = $this->get_new_parentid('quiz_question_instance');
         if ($entry = $this->get_mappingid('question_bank_entry', $data->questionbankentryid)) {
             $data->questionbankentryid = $entry;
         }
-        $DB->insert_record('question_references', $data);
+        // Queue the record to be inserted in bulk.
+        $this->queue_insert_record('question_references', $data);
     }
 }
 

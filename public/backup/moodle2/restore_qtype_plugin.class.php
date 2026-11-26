@@ -183,8 +183,9 @@ abstract class restore_qtype_plugin extends restore_plugin {
             // Adjust some columns
             $data->question = $newquestionid;
             $data->answer = $data->answertext;
-            // Insert record
-            $newitemid = $DB->insert_record('question_answers', $data);
+            // Queue the record, the answers are inserted in bulk and their mappings are stored afterwards.
+            $this->step->queue_insert_record('question_answers', $data, 'question_answer', $oldid, 'question');
+            return;
 
         // The question existed, we need to map the existing question_answers
         } else {
@@ -238,8 +239,6 @@ abstract class restore_qtype_plugin extends restore_plugin {
      * (if the question already existed and is being reused)
      */
     public function process_question_numerical_unit($data) {
-        global $DB;
-
         $data = (object)$data;
         $oldid = $data->id;
 
@@ -252,8 +251,8 @@ abstract class restore_qtype_plugin extends restore_plugin {
         if ($questioncreated) {
             // Adjust some columns
             $data->question = $newquestionid;
-            // Insert record
-            $newitemid = $DB->insert_record('question_numerical_units', $data);
+            // Queue the record to be inserted in bulk.
+            $this->step->queue_insert_record('question_numerical_units', $data);
         }
     }
 
@@ -263,8 +262,6 @@ abstract class restore_qtype_plugin extends restore_plugin {
      * (if the question already existed and is being reused)
      */
     public function process_question_numerical_option($data) {
-        global $DB;
-
         $data = (object)$data;
         $oldid = $data->id;
 
@@ -277,8 +274,8 @@ abstract class restore_qtype_plugin extends restore_plugin {
         if ($questioncreated) {
             // Adjust some columns
             $data->question = $newquestionid;
-            // Insert record
-            $newitemid = $DB->insert_record('question_numerical_options', $data);
+            // Queue the record to be inserted in bulk.
+            $this->step->queue_insert_record('question_numerical_options', $data);
             // Create mapping (not needed, no files nor childs nor states here)
             //$this->set_mapping('question_numerical_option', $oldid, $newitemid);
         }
@@ -345,7 +342,7 @@ abstract class restore_qtype_plugin extends restore_plugin {
         $questiondataset = new stdClass();
         $questiondataset->question = $newquestionid;
         $questiondataset->datasetdefinition = $newitemid;
-        $DB->insert_record('question_datasets', $questiondataset);
+        $this->step->queue_insert_record('question_datasets', $questiondataset);
     }
 
     /**
@@ -354,8 +351,6 @@ abstract class restore_qtype_plugin extends restore_plugin {
      * (if the question already existed and is being reused)
      */
     public function process_question_dataset_item($data) {
-        global $DB;
-
         $data = (object)$data;
         $oldid = $data->id;
 
@@ -380,7 +375,7 @@ abstract class restore_qtype_plugin extends restore_plugin {
         // let's create the question_dataset_items
         $data->definition = $newdefinitionid;
         $data->itemnumber = $data->number;
-        $DB->insert_record('question_dataset_items', $data);
+        $this->step->queue_insert_record('question_dataset_items', $data);
     }
 
     /**

@@ -91,7 +91,8 @@ class restore_qtype_extrafields_plugin extends restore_qtype_plugin {
 
         if ($questioncreated) {
             $data['answerid'] = $this->get_mappingid('question_answer', $data['id']);
-            $DB->insert_record($tablename, $data);
+            // Queue the record to be inserted in bulk.
+            $this->step->queue_insert_record($tablename, $data);
         } else {
             $DB->update_record($tablename, $data);
         }
@@ -103,8 +104,6 @@ class restore_qtype_extrafields_plugin extends restore_qtype_plugin {
      * @param array $data question data
      */
     public function really_process_extra_question_fields($data) {
-        global $DB;
-
         $oldid = $data['id'];
 
         // Detect if the question is created or mapped.
@@ -121,11 +120,8 @@ class restore_qtype_extrafields_plugin extends restore_qtype_plugin {
             $qtfield = $this->qtypeobj->questionid_column_name();
             $data[$qtfield] = $newquestionid;
 
-            // Insert record.
-            $newitemid = $DB->insert_record($tablename, $data);
-
-            // Create mapping.
-            $this->set_mapping($tablename, $oldid, $newitemid);
+            // Queue the record to be inserted in bulk and create the mapping afterwards.
+            $this->step->queue_insert_record($tablename, $data, $tablename, $oldid, $qtfield);
         }
     }
 }
