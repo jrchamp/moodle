@@ -69,16 +69,29 @@ class restore_html_block_decode_content extends restore_decode_content {
     protected function get_iterator() {
         global $DB;
 
-        // Build the SQL dynamically here
+        $mappings = restore_dbops::get_mappings($this->restoreid, [
+            'backupid' => $this->restoreid,
+            'itemname' => $this->mapping,
+        ], '', 'newitemid');
+
+        $newitemids = [];
+        foreach ($mappings as $mapping) {
+            if (!empty($mapping->newitemid)) {
+                $newitemids[] = (int) $mapping->newitemid;
+            }
+        }
+
+        if (!$newitemids) {
+            return [];
+        }
+
         $fieldslist = 't.' . implode(', t.', $this->fields);
+        [$insql, $params] = $DB->get_in_or_equal($newitemids, SQL_PARAMS_NAMED, 'id');
         $sql = "SELECT t.id, $fieldslist
                   FROM {" . $this->tablename . "} t
-                  JOIN {backup_ids_temp} b ON b.newitemid = t.id
-                 WHERE b.backupid = ?
-                   AND b.itemname = ?
+                 WHERE t.id {$insql}
                    AND t.blockname = 'html'";
-        $params = array($this->restoreid, $this->mapping);
-        return ($DB->get_recordset_sql($sql, $params));
+        return $DB->get_records_sql($sql, $params);
     }
 
     protected function preprocess_field($field) {

@@ -308,7 +308,7 @@ final class structure_test extends \advanced_testcase {
         $rating->annotate_ids('user2', 'userid');
         $rating->annotate_ids('forum_post', 'itemid');
 
-        // Create the backup_ids_temp table
+        // Create the backup ids temporary storage.
         backup_controller_dbops::create_backup_ids_temp_table($backupid);
 
         // Instantiate in memory xml output
@@ -442,29 +442,30 @@ final class structure_test extends \advanced_testcase {
 
         // Check annotations information against DB
         // Count records in original tables
-        $c_postsid    = $DB->count_records_sql('SELECT COUNT(DISTINCT id) FROM {forum_posts}');
-        $c_dissuserid = $DB->count_records_sql('SELECT COUNT(DISTINCT userid) FROM {forum_discussions}');
-        $c_ratuserid  = $DB->count_records_sql('SELECT COUNT(DISTINCT userid) FROM {rating}');
-        // Count records in backup_ids_table
-        $f_forumpost = $DB->count_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => 'forum_post'));
-        $f_user1     = $DB->count_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => 'user1'));
-        $f_user2     = $DB->count_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => 'user2'));
-        $c_notbackupid = $DB->count_records_select('backup_ids_temp', 'backupid != ?', array($backupid));
-        // Peform tests by comparing counts
-        $this->assertEquals($c_notbackupid, 0); // there isn't any record with incorrect backupid
-        $this->assertEquals($c_postsid, $f_forumpost); // All posts have been registered
-        $this->assertEquals($c_dissuserid, $f_user1); // All users coming from discussions have been registered
-        $this->assertEquals($c_ratuserid, $f_user2); // All users coming from ratings have been registered
+        $postcount = $DB->count_records_sql('SELECT COUNT(DISTINCT id) FROM {forum_posts}');
+        $discussionusercount = $DB->count_records_sql('SELECT COUNT(DISTINCT userid) FROM {forum_discussions}');
+        $ratingusercount  = $DB->count_records_sql('SELECT COUNT(DISTINCT userid) FROM {rating}');
+        // Count records in backup items.
+        $forumpostitems = backup_controller_dbops::count_items($backupid, 'forum_post');
+        $user1items = backup_controller_dbops::count_items($backupid, 'user1');
+        $user2items = backup_controller_dbops::count_items($backupid, 'user2');
+        $otherbackupitems = backup_controller_dbops::count_items('otherbackupid', 'forum_post');
+        // Peform tests by comparing counts.
+        $this->assertEquals($otherbackupitems, 0); // There isn't any record with incorrect backupid.
+        $this->assertEquals($postcount, $forumpostitems); // All posts have been registered.
+        $this->assertEquals($discussionusercount, $user1items); // All users coming from discussions have been registered.
+        $this->assertEquals($ratingusercount, $user2items); // All users coming from ratings have been registered.
 
-        // Check file annotations against DB
-        $fannotations = $DB->get_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => 'file'));
+        // Check file items against DB.
+        $fileitems = backup_controller_dbops::get_items($backupid, 'file');
         $ffiles       = $DB->get_records('files', array('contextid' => $this->contextid));
-        $this->assertEquals(count($fannotations), count($ffiles)); // Same number of recs in both (all files have been annotated)
-        foreach ($fannotations as $annotation) { // Check ids annotated
-            $this->assertTrue($DB->record_exists('files', array('id' => $annotation->itemid)));
+        $this->assertEquals(count($fileitems), count($ffiles)); // Same number of recs in both (all files have been added).
+        // Check the item ids.
+        foreach ($fileitems as $item) {
+            $this->assertTrue($DB->record_exists('files', ['id' => $item->itemid]));
         }
 
-        // Drop the backup_ids_temp table
+        // Drop the backup ids temporary storage.
         backup_controller_dbops::drop_backup_ids_temp_table('testingid');
     }
 

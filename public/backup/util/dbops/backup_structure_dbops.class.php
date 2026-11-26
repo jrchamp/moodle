@@ -40,6 +40,15 @@ abstract class backup_structure_dbops extends backup_dbops {
             throw new base_element_struct_exception('backup_nested_element_expected');
         }
 
+        if ($element->get_source_callback() !== null) {
+            $values = self::convert_params_to_values($element->get_source_params(), $processor);
+            $result = call_user_func($element->get_source_callback(), $values, $element, $processor);
+            if (is_array($result)) {
+                return new backup_array_iterator($result);
+            }
+            return $result;
+        }
+
         // If var_array, table and sql are null, and element has no final elements it is one nested element without source
         // Just return one 1 element iterator without information
         if ($element->get_source_array() === null && $element->get_source_table() === null &&
@@ -50,7 +59,18 @@ abstract class backup_structure_dbops extends backup_dbops {
             return new backup_array_iterator($element->get_source_array());
 
         } else if ($element->get_source_table() !== null) { // It's one table, return recordset iterator
-            return $DB->get_recordset($element->get_source_table(), self::convert_params_to_values($params, $processor), $element->get_source_table_sortby());
+            $values = self::convert_params_to_values($params, $processor);
+            if (class_exists('backup_question_bank_cache', false) && backup_question_bank_cache::is_active()) {
+                $cached = backup_question_bank_cache::get_table_rows(
+                    $element->get_source_table(),
+                    $values,
+                    $element->get_source_table_sortby() ?? '',
+                );
+                if ($cached !== null) {
+                    return new backup_array_iterator($cached);
+                }
+            }
+            return $DB->get_recordset($element->get_source_table(), $values, $element->get_source_table_sortby());
 
         } else if ($element->get_source_sql() !== null) { // It's one sql, return recordset iterator
             return $DB->get_recordset_sql($element->get_source_sql(), self::convert_params_to_values($params, $processor));
@@ -89,20 +109,7 @@ abstract class backup_structure_dbops extends backup_dbops {
     }
 
     public static function insert_backup_ids_record($backupid, $itemname, $itemid) {
-        global $DB;
-        // We need to do some magic with scales (that are stored in negative way)
-        if ($itemname == 'scale') {
-            $itemid = -($itemid);
-        }
-        // Now, we skip any annotation with negatives/zero/nulls, ids table only stores true id (always > 0)
-        if ($itemid <= 0 || is_null($itemid)) {
-            return;
-        }
-        // TODO: Analyze if some static (and limited) cache by the 3 params could save us a bunch of record_exists() calls
-        // Note: Sure it will!
-        if (!$DB->record_exists('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname, 'itemid' => $itemid))) {
-            $DB->insert_record('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname, 'itemid' => $itemid));
-        }
+        backup_controller_dbops::add_item($backupid, $itemname, (int) $itemid);
     }
 
     /**
@@ -150,7 +157,7 @@ abstract class backup_structure_dbops extends backup_dbops {
     }
 
     /**
-     * Moves all the existing 'item' annotations to their final 'itemfinal' ones
+     * Moves all the existing 'item' records to their final 'itemfinal' ones
      * for a given backup.
      *
      * @param string $backupid Backup ID
@@ -158,30 +165,13 @@ abstract class backup_structure_dbops extends backup_dbops {
      * @param \core\progress\base $progress Progress tracker
      */
     public static function move_annotations_to_final($backupid, $itemname, \core\progress\base $progress) {
-        global $DB;
-        $progress->start_progress('move_annotations_to_final');
-        $rs = $DB->get_recordset('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname));
-        $progress->progress();
-        foreach($rs as $annotation) {
-            // If corresponding 'itemfinal' annotation does not exist, update 'item' to 'itemfinal'
-            if (! $DB->record_exists('backup_ids_temp', array('backupid' => $backupid,
-                                                              'itemname' => $itemname . 'final',
-                                                              'itemid' => $annotation->itemid))) {
-                $DB->set_field('backup_ids_temp', 'itemname', $itemname . 'final', array('id' => $annotation->id));
-            }
-            $progress->progress();
-        }
-        $rs->close();
-        // All the remaining $itemname annotations can be safely deleted
-        $DB->delete_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname));
-        $progress->end_progress();
+        backup_controller_dbops::move_items_to_final($backupid, $itemname, $progress);
     }
 
     /**
-     * Returns true/false if there are annotations for a given item
+     * Returns true/false if there are records for a given item name.
      */
     public static function annotations_exist($backupid, $itemname) {
-        global $DB;
-        return (bool)$DB->count_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname));
+        return backup_controller_dbops::has_items($backupid, $itemname);
     }
 }

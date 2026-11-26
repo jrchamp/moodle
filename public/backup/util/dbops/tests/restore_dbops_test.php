@@ -21,11 +21,13 @@ use restore_dbops;
 
 defined('MOODLE_INTERNAL') || die();
 
-// Include all the needed stuff
+// Include all the needed stuff.
 global $CFG;
 require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
 
 /**
+ * Tests for restore DB operations.
+ *
  * @package    core_backup
  * @category   test
  * @copyright  2010 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
@@ -38,13 +40,10 @@ final class restore_dbops_test extends \advanced_testcase {
      * Verify the xxx_ids_cached (in-memory backup_ids cache) stuff works as expected.
      *
      * Note that those private implementations are tested here by using the public
-     * backup_ids API and later performing low-level tests.
+     * backup_ids API.
      */
     public function test_backup_ids_cached(): void {
-        global $DB;
-        $dbman = $DB->get_manager(); // We are going to use database_manager services.
-
-        $this->resetAfterTest(true); // Playing with temp tables, better reset once finished.
+        $this->resetAfterTest(true);
 
         // Some variables and objects for testing.
         $restoreid = 'testrestoreid';
@@ -56,7 +55,6 @@ final class restore_dbops_test extends \advanced_testcase {
         $mapping->parentitemid = 3;
         $mapping->info = 'info';
 
-        // Create the backup_ids temp tables used by restore.
         restore_controller_dbops::create_restore_temp_tables($restoreid);
 
         // Send one mapping using the public api with defaults.
@@ -69,36 +67,13 @@ final class restore_dbops_test extends \advanced_testcase {
         $this->assertSame(null, $result->parentitemid);
         $this->assertSame(null, $result->info);
 
-        // Drop the backup_xxx_temp temptables manually, so memory cache won't be invalidated.
-        $dbman->drop_table(new \xmldb_table('backup_ids_temp'));
-        $dbman->drop_table(new \xmldb_table('backup_files_temp'));
-
-        // Verify the mapping continues returning the same info,
-        // now from cache (the table does not exist).
+        // Verify the mapping is still available from the in-memory store.
         $result = restore_dbops::get_backup_ids_record($restoreid, $mapping->itemname, $mapping->itemid);
         $this->assertSame($mapping->itemname, $result->itemname);
-        $this->assertSame($mapping->itemid, $result->itemid);
-        $this->assertSame(0, $result->newitemid);
-        $this->assertSame(null, $result->parentitemid);
-        $this->assertSame(null, $result->info);
 
-        // Recreate the temp table, just to drop it using the restore API in
-        // order to check that, then, the cache becomes invalid for the same request.
-        restore_controller_dbops::create_restore_temp_tables($restoreid);
-        restore_controller_dbops::drop_restore_temp_tables($restoreid);
-
-        // No cached info anymore, so the mapping request will arrive to
-        // DB leading to error (temp table does not exist).
-        try {
-            $result = restore_dbops::get_backup_ids_record($restoreid, $mapping->itemname, $mapping->itemid);
-            $this->fail('Expecting an exception, none occurred');
-        } catch (\Exception $e) {
-            $this->assertTrue($e instanceof \dml_exception);
-            $this->assertSame('Table "backup_ids_temp" does not exist', $e->getMessage());
-        }
-
-        // Create the backup_ids temp tables once more.
-        restore_controller_dbops::create_restore_temp_tables($restoreid);
+        // Reset the caches; the mapping is no longer available.
+        restore_dbops::reset_backup_ids_cached();
+        $this->assertFalse(restore_dbops::get_backup_ids_record($restoreid, $mapping->itemname, $mapping->itemid));
 
         // Send one mapping using the public api with complete values.
         restore_dbops::set_backup_ids_record($restoreid, $mapping->itemname, $mapping->itemid,
@@ -111,15 +86,9 @@ final class restore_dbops_test extends \advanced_testcase {
         $this->assertSame($mapping->parentitemid, $result->parentitemid);
         $this->assertSame($mapping->info, $result->info);
 
-        // Finally, drop the temp tables properly and get the DB error again (memory caches empty).
+        // Drop the stores and verify the mapping is gone.
         restore_controller_dbops::drop_restore_temp_tables($restoreid);
-        try {
-            $result = restore_dbops::get_backup_ids_record($restoreid, $mapping->itemname, $mapping->itemid);
-            $this->fail('Expecting an exception, none occurred');
-        } catch (\Exception $e) {
-            $this->assertTrue($e instanceof \dml_exception);
-            $this->assertSame('Table "backup_ids_temp" does not exist', $e->getMessage());
-        }
+        $this->assertFalse(restore_dbops::get_backup_ids_record($restoreid, $mapping->itemname, $mapping->itemid));
     }
 
     /**

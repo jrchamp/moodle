@@ -32,6 +32,9 @@
  */
 abstract class restore_controller_dbops extends restore_dbops {
 
+    /** @var array Restore ids whose temporary stores have been initialised. */
+    private static $tempstoresinitialised = [];
+
     /**
      * Send one restore controller to DB
      *
@@ -109,30 +112,18 @@ abstract class restore_controller_dbops extends restore_dbops {
     }
 
     public static function create_restore_temp_tables($restoreid) {
-        global $CFG, $DB;
-        $dbman = $DB->get_manager(); // We are going to use database_manager services
-
-        if ($dbman->table_exists('backup_ids_temp')) { // Table exists, from restore prechecks
-            // TODO: Improve this by inserting/selecting some record to see there is restoreid match
-            // TODO: If not match, exception, table corresponds to another backup/restore operation
+        if (isset(self::$tempstoresinitialised[$restoreid])) {
             return true;
         }
-        backup_controller_dbops::create_backup_ids_temp_table($restoreid);
-        backup_controller_dbops::create_backup_files_temp_table($restoreid);
+        self::$tempstoresinitialised[$restoreid] = true;
         return false;
     }
 
     public static function drop_restore_temp_tables($backupid) {
-        global $DB;
-        $dbman = $DB->get_manager(); // We are going to use database_manager services
-
-        $targettablenames = array('backup_ids_temp', 'backup_files_temp');
-        foreach ($targettablenames as $targettablename) {
-            $table = new xmldb_table($targettablename);
-            $dbman->drop_table($table); // And drop it
-        }
+        unset(self::$tempstoresinitialised[$backupid]);
         // Invalidate the backup_ids caches.
         restore_dbops::reset_backup_ids_cached();
+        backup_files_temp_store::reset_all();
     }
 
     /**

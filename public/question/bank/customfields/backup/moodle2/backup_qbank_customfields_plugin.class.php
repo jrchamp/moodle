@@ -47,16 +47,14 @@ class backup_qbank_customfields_plugin extends \backup_qbank_plugin {
         $pluginwrapper->add_child($customfields);
         $customfields->add_child($customfield);
 
-        $customfield->set_source_sql("SELECT cfd.id, cff.shortname, cff.type,  cfd.value, cfd.valueformat, cfd.valuetrust
-                                        FROM {customfield_data} cfd
-                                        JOIN {customfield_field} cff ON cff.id = cfd.fieldid
-                                        JOIN {customfield_category} cfc ON cfc.id = cff.categoryid
-                                       WHERE cfc.component = 'qbank_customfields'
-                                         AND cfc.area = 'question'
-                                         AND cfd.instanceid = ?",
-                [
-                        backup::VAR_PARENTID
-                ]);
+        $customfield->set_source_callback(
+            static function (array $values): array {
+                return backup_question_bank_cache::get_customfields_for_question((int) reset($values));
+            },
+            [
+                backup::VAR_PARENTID,
+            ]
+        );
 
         // Don't need to annotate ids nor files.
 

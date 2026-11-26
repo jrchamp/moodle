@@ -22,45 +22,17 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/backup_ids_temp_store.class.php');
+require_once(__DIR__ . '/backup_files_temp_store.class.php');
+
 /**
  * Base abstract class for all the helper classes providing DB operations
  *
  * TODO: Finish phpdocs
  */
 abstract class restore_dbops {
-    /**
-     * Keep cache of backup records.
-     * @var array
-     * @todo MDL-25290 static should be replaced with MUC code.
-     */
-    private static $backupidscache = array();
-    /**
-     * Keep track of backup ids which are cached.
-     * @var array
-     * @todo MDL-25290 static should be replaced with MUC code.
-     */
-    private static $backupidsexist = array();
-    /**
-     * Count is expensive, so manually keeping track of
-     * backupidscache, to avoid memory issues.
-     * @var int
-     * @todo MDL-25290 static should be replaced with MUC code.
-     */
-    private static $backupidscachesize = 2048;
-    /**
-     * Count is expensive, so manually keeping track of
-     * backupidsexist, to avoid memory issues.
-     * @var int
-     * @todo MDL-25290 static should be replaced with MUC code.
-     */
-    private static $backupidsexistsize = 10240;
-    /**
-     * Slice backupids cache to add more data.
-     * @var int
-     * @todo MDL-25290 static should be replaced with MUC code.
-     */
-    private static $backupidsslice = 512;
-
     /**
      * Return one array containing all the tasks that have been included
      * in the restore process. Note that these tasks aren't built (they
@@ -160,18 +132,20 @@ abstract class restore_dbops {
     /**
      * Precheck the loaded roles, return empty array if everything is ok, and
      * array with 'errors', 'warnings' elements (suitable to be used by restore_prechecks)
-     * with any problem found. At the same time, store all the mapping into backup_ids_temp
+     * with any problem found. At the same time, store all the mapping into backup temporary storage
      * and also put the information into $rolemappings (controller->info), so it can be reworked later by
      * post-precheck stages while at the same time accept modified info in the same object coming from UI
      */
     public static function precheck_included_roles($restoreid, $courseid, $userid, $samesite, $rolemappings) {
-        global $DB;
-
         $problems = array(); // To store warnings/errors
 
         // Get loaded roles from backup_ids
-        $rs = $DB->get_recordset('backup_ids_temp', array('backupid' => $restoreid, 'itemname' => 'role'), '', 'itemid, info');
-        foreach ($rs as $recrole) {
+        $roles = backup_ids_temp_store::get($restoreid)->get_records(
+            ['backupid' => $restoreid, 'itemname' => 'role'],
+            '',
+            'itemid, info'
+        );
+        foreach ($roles as $recrole) {
             // If the rolemappings->modified flag is set, that means that we are coming from
             // manually modified mappings (by UI), so accept those mappings an put them to backup_ids
             if ($rolemappings->modified) {
@@ -196,162 +170,102 @@ abstract class restore_dbops {
                 }
             }
         }
-        $rs->close();
         return $problems;
     }
 
     /**
-     * Return cached backup id's
+     * Get backup id records.
      *
-     * @param int $restoreid id of backup
-     * @param string $itemname name of the item
-     * @param int $itemid id of item
-     * @return stdClass|false record from 'backup_ids_temp' table
-     * @todo MDL-25290 replace static backupids* with MUC code
+     * @param string $restoreid
+     * @param array $conditions
+     * @param string $sort
+     * @param string $fields
+     * @param int $limitfrom
+     * @param int $limitnum
+     * @return array
      */
-    protected static function get_backup_ids_cached($restoreid, $itemname, $itemid) {
-        global $DB;
-
-        $key = "$itemid $itemname $restoreid";
-
-        // If record exists in cache then return.
-        if (isset(self::$backupidsexist[$key]) && isset(self::$backupidscache[$key])) {
-            // Return a copy of cached data, to avoid any alterations in cached data.
-            return clone self::$backupidscache[$key];
-        }
-
-        // Clean cache, if it's full.
-        if (self::$backupidscachesize <= 0) {
-            // Remove some records, to keep memory in limit.
-            self::$backupidscache = array_slice(self::$backupidscache, self::$backupidsslice, null, true);
-            self::$backupidscachesize = self::$backupidscachesize + self::$backupidsslice;
-        }
-        if (self::$backupidsexistsize <= 0) {
-            self::$backupidsexist = array_slice(self::$backupidsexist, self::$backupidsslice, null, true);
-            self::$backupidsexistsize = self::$backupidsexistsize + self::$backupidsslice;
-        }
-
-        // Retrive record from database.
-        $record = array(
-            'backupid' => $restoreid,
-            'itemname' => $itemname,
-            'itemid'   => $itemid
-        );
-        if ($dbrec = $DB->get_record('backup_ids_temp', $record)) {
-            self::$backupidsexist[$key] = $dbrec->id;
-            self::$backupidscache[$key] = $dbrec;
-            self::$backupidscachesize--;
-            self::$backupidsexistsize--;
-            return $dbrec;
-        } else {
-            return false;
-        }
+    public static function get_mappings(
+        $restoreid,
+        array $conditions,
+        string $sort = '',
+        string $fields = '*',
+        int $limitfrom = 0,
+        int $limitnum = 0,
+    ): array {
+        return backup_ids_temp_store::get($restoreid)->get_records($conditions, $sort, $fields, $limitfrom, $limitnum);
     }
 
     /**
-     * Cache backup ids'
+     * Get one field from a backup id record.
      *
-     * @param int $restoreid id of backup
-     * @param string $itemname name of the item
-     * @param int $itemid id of item
-     * @param array $extrarecord extra record which needs to be updated
-     * @return void
-     * @todo MDL-25290 replace static BACKUP_IDS_* with MUC code
+     * @param string $restoreid
+     * @param array $conditions
+     * @param string $field
+     * @return mixed
      */
-    protected static function set_backup_ids_cached($restoreid, $itemname, $itemid, $extrarecord) {
-        global $DB;
-
-        $key = "$itemid $itemname $restoreid";
-
-        $record = array(
-            'backupid' => $restoreid,
-            'itemname' => $itemname,
-            'itemid'   => $itemid,
-        );
-
-        // If record is not cached then add one.
-        if (!isset(self::$backupidsexist[$key])) {
-            // If we have this record in db, then just update this.
-            if ($existingrecord = $DB->get_record('backup_ids_temp', $record)) {
-                self::$backupidsexist[$key] = $existingrecord->id;
-                self::$backupidsexistsize--;
-                self::update_backup_cached_record($record, $extrarecord, $key, $existingrecord);
-            } else {
-                // Add new record to cache and db.
-                $recorddefault = array (
-                    'newitemid' => 0,
-                    'parentitemid' => null,
-                    'info' => null);
-                $record = array_merge($record, $recorddefault, $extrarecord);
-                $record['id'] = $DB->insert_record('backup_ids_temp', $record);
-                self::$backupidsexist[$key] = $record['id'];
-                self::$backupidsexistsize--;
-                if (self::$backupidscachesize > 0) {
-                    // Cache new records if we haven't got many yet.
-                    self::$backupidscache[$key] = (object) $record;
-                    self::$backupidscachesize--;
-                }
-            }
-        } else {
-            self::update_backup_cached_record($record, $extrarecord, $key);
-        }
+    public static function get_mapping_field($restoreid, array $conditions, string $field) {
+        return backup_ids_temp_store::get($restoreid)->get_field($conditions, $field);
     }
 
     /**
-     * Updates existing backup record
+     * Count backup id records.
      *
-     * @param array $record record which needs to be updated
-     * @param array $extrarecord extra record which needs to be updated
-     * @param string $key unique key which is used to identify cached record
-     * @param stdClass $existingrecord (optional) existing record
+     * @param string $restoreid
+     * @param array $conditions
+     * @return int
      */
-    protected static function update_backup_cached_record($record, $extrarecord, $key, $existingrecord = null) {
-        global $DB;
-        // Update only if extrarecord is not empty.
-        if (!empty($extrarecord)) {
-            $extrarecord['id'] = self::$backupidsexist[$key];
-            $DB->update_record('backup_ids_temp', $extrarecord);
-            // Update existing cache or add new record to cache.
-            if (isset(self::$backupidscache[$key])) {
-                $record = array_merge((array)self::$backupidscache[$key], $extrarecord);
-                self::$backupidscache[$key] = (object) $record;
-            } else if (self::$backupidscachesize > 0) {
-                if ($existingrecord) {
-                    self::$backupidscache[$key] = $existingrecord;
-                } else {
-                    // Retrive record from database and cache updated records.
-                    self::$backupidscache[$key] = $DB->get_record('backup_ids_temp', $record);
-                }
-                $record = array_merge((array)self::$backupidscache[$key], $extrarecord);
-                self::$backupidscache[$key] = (object) $record;
-                self::$backupidscachesize--;
-            }
-        }
+    public static function count_mappings($restoreid, array $conditions): int {
+        return backup_ids_temp_store::get($restoreid)->count_records($conditions);
     }
 
     /**
-     * Reset the ids caches completely
+     * Whether the backup ids store has been initialised.
      *
-     * Any destructive operation (partial delete, truncate, drop or recreate) performed
-     * with the backup_ids table must cause the backup_ids caches to be
-     * invalidated by calling this method. See MDL-33630.
+     * @param string $restoreid
+     * @return bool
+     */
+    public static function is_ids_store_initialized($restoreid): bool {
+        return backup_ids_temp_store::get($restoreid)->is_initialized();
+    }
+
+    /**
+     * Count backup file records.
      *
-     * Note that right now, the only operation of that type is the recreation
-     * (drop & restore) of the table that may happen once the prechecks have ended. All
-     * the rest of operations are always routed via {@link set_backup_ids_record()}, 1 by 1,
-     * keeping the caches on sync.
+     * @param string $restoreid
+     * @param array $conditions
+     * @return int
+     */
+    public static function count_backup_files_records($restoreid, array $conditions): int {
+        return backup_files_temp_store::get($restoreid)->count_records($conditions);
+    }
+
+    /**
+     * Get backup file records.
      *
-     * @todo MDL-25290 static should be replaced with MUC code.
+     * @param string $restoreid
+     * @param array $conditions
+     * @param string $sort
+     * @param string $fields
+     * @param int $limitfrom
+     * @param int $limitnum
+     * @return array
+     */
+    public static function get_backup_files_records(
+        $restoreid,
+        array $conditions,
+        string $sort = '',
+        string $fields = '*',
+        int $limitfrom = 0,
+        int $limitnum = 0,
+    ): array {
+        return backup_files_temp_store::get($restoreid)->get_records($conditions, $sort, $fields, $limitfrom, $limitnum);
+    }
+
+    /**
+     * Reset the backup ids store.
      */
     public static function reset_backup_ids_cached() {
-        // Reset the ids cache.
-        $cachetoadd = count(self::$backupidscache);
-        self::$backupidscache = array();
-        self::$backupidscachesize = self::$backupidscachesize + $cachetoadd;
-        // Reset the exists cache.
-        $existstoadd = count(self::$backupidsexist);
-        self::$backupidsexist = array();
-        self::$backupidsexistsize = self::$backupidsexistsize + $existstoadd;
+        backup_ids_temp_store::reset_all();
     }
 
     /**
@@ -804,14 +718,15 @@ abstract class restore_dbops {
      * that level are returned
      */
     public static function restore_get_question_banks($restoreid, $contextlevel = null) {
-        global $DB;
-
         $results = array();
-        $qcats = $DB->get_recordset_sql("SELECT itemid, parentitemid AS contextid, info
-                                         FROM {backup_ids_temp}
-                                       WHERE backupid = ?
-                                         AND itemname = 'question_category'", array($restoreid));
+        $qcats = backup_ids_temp_store::get($restoreid)->get_records(
+            ['backupid' => $restoreid, 'itemname' => 'question_category'],
+            '',
+            'itemid, parentitemid, info'
+        );
+
         foreach ($qcats as $qcat) {
+            $qcat->contextid = $qcat->parentitemid;
             // If this qcat context haven't been acummulated yet, do that
             if (!isset($results[$qcat->contextid])) {
                 $info = backup_controller_dbops::decode_backup_temp_info($qcat->info);
@@ -821,7 +736,6 @@ abstract class restore_dbops {
                 }
             }
         }
-        $qcats->close();
         // Sort by value (contextlevel from CONTEXT_SYSTEM downto CONTEXT_MODULE)
         asort($results);
         return $results;
@@ -837,14 +751,13 @@ abstract class restore_dbops {
      * @return array Question categories for the given context id and level.
      */
     public static function restore_get_question_categories($restoreid, $contextid, $contextlevel) {
-        global $DB;
-
         $results = array();
-        $qcats = $DB->get_recordset_sql("SELECT itemid, info
-                                         FROM {backup_ids_temp}
-                                        WHERE backupid = ?
-                                          AND itemname = 'question_category'
-                                          AND parentitemid = ?", array($restoreid, $contextid));
+        $qcats = backup_ids_temp_store::get($restoreid)->get_records(
+            ['backupid' => $restoreid, 'itemname' => 'question_category', 'parentitemid' => $contextid],
+            '',
+            'itemid, info'
+        );
+
         foreach ($qcats as $qcat) {
             $result = backup_controller_dbops::decode_backup_temp_info($qcat->info);
             // Filter out found categories that belong to another context level.
@@ -855,7 +768,6 @@ abstract class restore_dbops {
                 $results[$qcat->itemid] = $result;
             }
         }
-        $qcats->close();
 
         return $results;
     }
@@ -920,18 +832,16 @@ abstract class restore_dbops {
      * a given restore operation and one question category
      */
     public static function restore_get_questions($restoreid, $qcatid) {
-        global $DB;
-
         $results = array();
-        $qs = $DB->get_recordset_sql("SELECT itemid, info
-                                      FROM {backup_ids_temp}
-                                     WHERE backupid = ?
-                                       AND itemname = 'question'
-                                       AND parentitemid = ?", array($restoreid, $qcatid));
+        $qs = backup_ids_temp_store::get($restoreid)->get_records(
+            ['backupid' => $restoreid, 'itemname' => 'question', 'parentitemid' => $qcatid],
+            '',
+            'itemid, info'
+        );
+
         foreach ($qs as $q) {
             $results[$q->itemid] = backup_controller_dbops::decode_backup_temp_info($q->info);
         }
-        $qs->close();
         return $results;
     }
 
@@ -981,46 +891,38 @@ abstract class restore_dbops {
             $newcontextid = $newcontextrecord->newitemid;
         }
 
-        // Sometimes it's possible to have not the oldcontextids stored into backup_ids_temp->parentitemid
-        // columns (because we have used them to store other information). This happens usually with
-        // all the question related backup_ids_temp records. In that case, it's safe to ignore that
-        // matching as far as we are always restoring for well known oldcontexts and olditemids
-        $parentitemctxmatchsql = ' AND i.parentitemid = f.contextid ';
-        if ($skipparentitemidctxmatch) {
-            $parentitemctxmatchsql = '';
-        }
-
-        // Important: remember how files have been loaded to backup_files_temp
+        // Important: remember how files have been loaded to backup temporary storage
         //   - info: contains the whole original object (times, names...)
         //   (all them being original ids as loaded from xml)
 
-        // itemname = null, we are going to match only by context, no need to use itemid (all them are 0)
-        if ($itemname == null) {
-            $sql = "SELECT id AS bftid, contextid, component, filearea, itemid, itemid AS newitemid, info
-                      FROM {backup_files_temp}
-                     WHERE backupid = ?
-                       AND contextid = ?
-                       AND component = ?
-                       AND filearea  = ?";
-            $params = array($restoreid, $oldcontextid, $component, $filearea);
-
-        // itemname not null, going to join with backup_ids to perform the old-new mapping of itemids
-        } else {
-            $sql = "SELECT f.id AS bftid, f.contextid, f.component, f.filearea, f.itemid, i.newitemid, f.info
-                      FROM {backup_files_temp} f
-                      JOIN {backup_ids_temp} i ON i.backupid = f.backupid
-                                              $parentitemctxmatchsql
-                                              AND i.itemid = f.itemid
-                     WHERE f.backupid = ?
-                       AND f.contextid = ?
-                       AND f.component = ?
-                       AND f.filearea = ?
-                       AND i.itemname = ?";
-            $params = array($restoreid, $oldcontextid, $component, $filearea, $itemname);
-            if ($olditemid !== null) { // Just process ONE olditemid intead of the whole itemname
-                $sql .= ' AND i.itemid = ?';
-                $params[] = $olditemid;
+        $filerecords = backup_files_temp_store::get($restoreid)->get_records([
+            'backupid' => $restoreid,
+            'contextid' => $oldcontextid,
+            'component' => $component,
+            'filearea' => $filearea,
+        ]);
+        $rs = [];
+        foreach ($filerecords as $rec) {
+            $rec->bftid = $rec->id;
+            if ($itemname === null) {
+                $rec->newitemid = $rec->itemid;
+            } else {
+                $mapping = self::get_backup_ids_record($restoreid, $itemname, $rec->itemid);
+                if (!$mapping) {
+                    continue;
+                }
+                if (
+                    !$skipparentitemidctxmatch &&
+                    (string) $mapping->parentitemid !== (string) $rec->contextid
+                ) {
+                    continue;
+                }
+                if ($olditemid !== null && (string) $mapping->itemid !== (string) $olditemid) {
+                    continue;
+                }
+                $rec->newitemid = $mapping->newitemid;
             }
+            $rs[] = $rec;
         }
 
         $fs = get_file_storage();         // Get moodle file storage
@@ -1029,7 +931,6 @@ abstract class restore_dbops {
         if ($progress) {
             $progress->progress();
         }
-        $rs = $DB->get_recordset_sql($sql, $params);
         foreach ($rs as $rec) {
             // Report progress each time around loop.
             if ($progress) {
@@ -1153,10 +1054,11 @@ abstract class restore_dbops {
 
                 // store the the new contextid and the new itemid in case we need to remap
                 // references to this file later
-                $DB->update_record('backup_files_temp', array(
+                backup_files_temp_store::get($restoreid)->update_record([
                     'id' => $rec->bftid,
                     'newcontextid' => $newcontextid,
-                    'newitemid' => $rec->newitemid), true);
+                    'newitemid' => $rec->newitemid,
+                ]);
 
             } else {
                 // this is an alias - we can't create it yet so we stash it in a temp
@@ -1172,7 +1074,6 @@ abstract class restore_dbops {
                 }
             }
         }
-        $rs->close();
         return $results;
     }
 
@@ -1219,7 +1120,11 @@ abstract class restore_dbops {
         $themes    = get_list_of_themes(); // Get themes for quick search later
 
         // Iterate over all the included users with newitemid = 0, have to create them
-        $rs = $DB->get_recordset('backup_ids_temp', array('backupid' => $restoreid, 'itemname' => 'user', 'newitemid' => 0), '', 'itemid, parentitemid, info');
+        $rs = backup_ids_temp_store::get($restoreid)->get_records(
+            ['backupid' => $restoreid, 'itemname' => 'user', 'newitemid' => 0],
+            '',
+            'itemid, parentitemid, info'
+        );
         foreach ($rs as $recuser) {
             $progress->progress();
             $user = (object)backup_controller_dbops::decode_backup_temp_info($recuser->info);
@@ -1411,7 +1316,6 @@ abstract class restore_dbops {
                         $recuser->parentitemid, $userid, null, null, null, false, $progress);
             }
         }
-        $rs->close();
         $progress->end_progress();
     }
 
@@ -1700,12 +1604,13 @@ abstract class restore_dbops {
 
         // Prepare for reporting progress.
         $conditions = array('backupid' => $restoreid, 'itemname' => 'user');
-        $max = $DB->count_records('backup_ids_temp', $conditions);
+        $store = backup_ids_temp_store::get($restoreid);
+        $max = $store->count_records($conditions);
         $done = 0;
         $progress->start_progress('Checking users', $max);
 
         // Iterate over all the included users
-        $rs = $DB->get_recordset('backup_ids_temp', $conditions, '', 'itemid, info');
+        $rs = $store->get_records($conditions, '', 'itemid, info');
         foreach ($rs as $recuser) {
             $user = (object)backup_controller_dbops::decode_backup_temp_info($recuser->info);
 
@@ -1759,7 +1664,6 @@ abstract class restore_dbops {
             $done++;
             $progress->progress($done);
         }
-        $rs->close();
         $progress->end_progress();
         return $problems;
     }
@@ -1813,17 +1717,15 @@ abstract class restore_dbops {
     }
 
     public static function set_backup_files_record($restoreid, $filerec) {
-        global $DB;
-
         // Store external files info in `info` field
         $filerec->info     = backup_controller_dbops::encode_backup_temp_info($filerec); // Encode the whole record into info.
         $filerec->backupid = $restoreid;
-        $DB->insert_record('backup_files_temp', $filerec);
+        backup_files_temp_store::get($restoreid)->insert_record($filerec);
     }
 
     public static function set_backup_ids_record($restoreid, $itemname, $itemid, $newitemid = 0, $parentitemid = null, $info = null) {
-        // Build conditionally the extra record info
-        $extrarecord = array();
+        // Build conditionally the extra record info.
+        $extrarecord = [];
         if ($newitemid != 0) {
             $extrarecord['newitemid'] = $newitemid;
         }
@@ -1834,11 +1736,36 @@ abstract class restore_dbops {
             $extrarecord['info'] = backup_controller_dbops::encode_backup_temp_info($info);
         }
 
-        self::set_backup_ids_cached($restoreid, $itemname, $itemid, $extrarecord);
+        $store = backup_ids_temp_store::get($restoreid);
+        $record = [
+            'backupid' => $restoreid,
+            'itemname' => $itemname,
+            'itemid' => $itemid,
+        ];
+
+        if ($existing = $store->get_record($record)) {
+            if (!empty($extrarecord)) {
+                $update = (array) $existing;
+                foreach ($extrarecord as $key => $value) {
+                    $update[$key] = $value;
+                }
+                $store->update_record($update);
+            }
+        } else {
+            $store->insert_record(array_merge($record, [
+                'newitemid' => 0,
+                'parentitemid' => null,
+                'info' => null,
+            ], $extrarecord));
+        }
     }
 
     public static function get_backup_ids_record($restoreid, $itemname, $itemid) {
-        $dbrec = self::get_backup_ids_cached($restoreid, $itemname, $itemid);
+        $dbrec = backup_ids_temp_store::get($restoreid)->get_record([
+            'backupid' => $restoreid,
+            'itemname' => $itemname,
+            'itemid' => $itemid,
+        ]);
 
         // We must test if info is a string, as the cache stores info in object form.
         if ($dbrec && isset($dbrec->info) && is_string($dbrec->info)) {
@@ -1891,7 +1818,11 @@ abstract class restore_dbops {
         // Get the course context
         $coursectx = context_course::instance($courseid);
         // Get all the mapped roles we have
-        $rs = $DB->get_recordset('backup_ids_temp', array('backupid' => $restoreid, 'itemname' => 'role'), '', 'itemid, info, newitemid');
+        $rs = backup_ids_temp_store::get($restoreid)->get_records(
+            ['backupid' => $restoreid, 'itemname' => 'role'],
+            '',
+            'itemid, info, newitemid'
+        );
         foreach ($rs as $recrole) {
             $info = backup_controller_dbops::decode_backup_temp_info($recrole->info);
             // If it's one mapped role and we have one name for it
@@ -1906,7 +1837,6 @@ abstract class restore_dbops {
                 }
             }
         }
-        $rs->close();
     }
 
     /**

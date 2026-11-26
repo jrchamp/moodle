@@ -172,6 +172,17 @@ final class backup_question_selection_test extends \advanced_testcase {
     }
 
     /**
+     * Get the ids of the questions included in a restore.
+     *
+     * @param \restore_controller $rc
+     * @return string[]
+     */
+    protected function get_backup_question_ids(\restore_controller $rc): array {
+        $records = \restore_dbops::get_mappings($rc->get_restoreid(), ['itemname' => 'question']);
+        return array_map(fn($record) => (string) $record->itemid, $records);
+    }
+
+    /**
      * Test that backing up a quiz only includes the questions owned or used by the quiz.
      */
     public function test_quiz_backup_excludes_unused_questions(): void {
@@ -204,7 +215,7 @@ final class backup_question_selection_test extends \advanced_testcase {
         $rc = new \restore_controller($backupid, $course2->id, \backup::INTERACTIVE_NO, \backup::MODE_IMPORT,
             $manager->id, \backup::TARGET_CURRENT_ADDING);
         $rc->execute_precheck();
-        $backupquestions = $DB->get_records_menu('backup_ids_temp', ['itemname' => 'question'], '', 'id, itemid');
+        $backupquestions = $this->get_backup_question_ids($rc);
         // Backup should contain used questions from shared qbanks.
         $this->assertContains((string) $sharedquestions['sharedparentcat']['sharedchildcat']['sharedq3']->id, $backupquestions);
         $this->assertContains((string) $coursequestions['courseparentcat']['courseq2']->id, $backupquestions);
@@ -285,7 +296,7 @@ final class backup_question_selection_test extends \advanced_testcase {
             \backup::TARGET_CURRENT_ADDING
         );
         $rc->execute_precheck();
-        $backupquestions = $DB->get_records_menu('backup_ids_temp', ['itemname' => 'question'], '', 'id, itemid');
+        $backupquestions = $this->get_backup_question_ids($rc);
         // Backup should contain used questions from shared qbanks.
         $this->assertContains((string) $sharedquestions['sharedparentcat']['sharedchildcat']['sharedq3']->id, $backupquestions);
         $this->assertContains((string) $coursequestions['courseparentcat']['courseq2']->id, $backupquestions);
@@ -351,7 +362,7 @@ final class backup_question_selection_test extends \advanced_testcase {
         $rc = new \restore_controller($backupid, $course2->id, \backup::INTERACTIVE_NO, \backup::MODE_IMPORT,
             $manager->id, \backup::TARGET_CURRENT_ADDING);
         $rc->execute_precheck();
-        $backupquestions = $DB->get_records_menu('backup_ids_temp', ['itemname' => 'question'], '', 'id, itemid');
+        $backupquestions = $this->get_backup_question_ids($rc);
         // Backup should contain used questions from shared qbanks.
         $this->assertContains((string) $sharedquestions['sharedparentcat']['sharedchildcat']['sharedq3']->id, $backupquestions);
         // Backup should contain all questions from course qbanks.
@@ -483,7 +494,7 @@ final class backup_question_selection_test extends \advanced_testcase {
             \backup::TARGET_CURRENT_ADDING,
         );
         $rc->execute_precheck();
-        $backupquestions = $DB->get_records_menu('backup_ids_temp', ['itemname' => 'question'], '', 'id, itemid');
+        $backupquestions = $this->get_backup_question_ids($rc);
 
         // Backup should contain the used parent category question and its children.
         $this->assertContains((string) $coursequestions['courseparentcat']['courseq2']->id, $backupquestions);

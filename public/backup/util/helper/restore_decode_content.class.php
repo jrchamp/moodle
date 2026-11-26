@@ -68,7 +68,7 @@ class restore_decode_content implements processable {
             throw new restore_decode_rule_exception('decode_content_restoreid_not_set');
         }
 
-        // Get the iterator of contents
+        // Get the contents.
         $it = $this->get_iterator();
         foreach ($it as $itrow) {               // Iterate over rows
             $itrowarr   = (array)$itrow;        // Array-ize for clean access
@@ -84,7 +84,6 @@ class restore_decode_content implements processable {
                 $this->update_iterator_row($itrowarr);
             }
         }
-        $it->close(); // Always close the iterator at the end
     }
 
 // Protected API starts here
@@ -92,15 +91,24 @@ class restore_decode_content implements processable {
     protected function get_iterator() {
         global $DB;
 
-        // Build the SQL dynamically here
-        $fieldslist = 't.' . implode(', t.', $this->fields);
-        $sql = "SELECT t.id, $fieldslist
-                  FROM {" . $this->tablename . "} t
-                  JOIN {backup_ids_temp} b ON b.newitemid = t.id
-                 WHERE b.backupid = ?
-                   AND b.itemname = ?";
-        $params = array($this->restoreid, $this->mapping);
-        return ($DB->get_recordset_sql($sql, $params));
+        $mappings = restore_dbops::get_mappings($this->restoreid, [
+            'backupid' => $this->restoreid,
+            'itemname' => $this->mapping,
+        ], '', 'newitemid');
+
+        $newitemids = [];
+        foreach ($mappings as $mapping) {
+            if (!empty($mapping->newitemid)) {
+                $newitemids[] = (int) $mapping->newitemid;
+            }
+        }
+
+        if (!$newitemids) {
+            return [];
+        }
+
+        $fields = 'id, ' . implode(', ', $this->fields);
+        return $DB->get_records_list($this->tablename, 'id', $newitemids, '', $fields);
     }
 
     protected function update_iterator_row($row) {

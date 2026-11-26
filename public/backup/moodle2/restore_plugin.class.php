@@ -184,7 +184,7 @@ abstract class restore_plugin {
      * To send ids pairs to backup_ids_table and to store them into paths
      *
      * This method will send the given itemname and old/new ids to the
-     * backup_ids_temp table, and, at the same time, will save the new id
+     * backup temporary storage, and, at the same time, will save the new id
      * into the corresponding restore_path_element for easier access
      * by children. Also will inject the known old context id for the task
      * in case it's going to be used for restoring files later

@@ -35,7 +35,7 @@ abstract class backup_question_dbops extends backup_dbops {
     /**
      * Calculates all the question_categories to be included
      * in backup, based in a given context (course/module) and
-     * the already annotated questions present in backup_ids_temp
+     * the already annotated questions present in backup temporary storage
      */
     public static function calculate_question_categories($backupid, $contextid) {
         global $DB;
@@ -46,16 +46,20 @@ abstract class backup_question_dbops extends backup_dbops {
 
         // Now, based in the annotated question bank entries, get all the categories they
         // belong to.
-        $questioncategories = $DB->get_records_sql_menu(
-            "SELECT DISTINCT qc2.id, qc2.parent
-               FROM {question_categories} qc2
-                    JOIN {question_bank_entries} qbe ON qbe.questioncategoryid = qc2.id
-                    JOIN {backup_ids_temp} bi ON bi.itemid = qbe.id
-              WHERE bi.backupid = ?
-                    AND bi.itemname = 'question_bank_entry'
-                    AND qc2.contextid != ?",
-            [$backupid, $contextid]
-        );
+        $questionbankentryids = backup_controller_dbops::get_item_ids($backupid, 'question_bank_entry');
+        $questioncategories = [];
+        if ($questionbankentryids) {
+            [$insql, $params] = $DB->get_in_or_equal($questionbankentryids, SQL_PARAMS_NAMED, 'qbe');
+            $params['contextid'] = $contextid;
+            $questioncategories = $DB->get_records_sql_menu(
+                "SELECT DISTINCT qc2.id, qc2.parent
+                   FROM {question_categories} qc2
+                   JOIN {question_bank_entries} qbe ON qbe.questioncategoryid = qc2.id
+                  WHERE qbe.id {$insql}
+                    AND qc2.contextid != :contextid",
+                $params
+            );
+        }
 
         // These are all the question categories we want to include in the backup.
         $categories = $contextcategories + $questioncategories;
@@ -103,10 +107,9 @@ abstract class backup_question_dbops extends backup_dbops {
     }
 
     /**
-     * Delete all the annotated questions present in backup_ids_temp
+     * Delete all the annotated questions present in backup temporary storage
      */
     public static function delete_temp_questions($backupid) {
-        global $DB;
-        $DB->delete_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => 'question'));
+        backup_controller_dbops::delete_items($backupid, 'question');
     }
 }

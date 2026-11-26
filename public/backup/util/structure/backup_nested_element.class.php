@@ -37,6 +37,8 @@ class backup_nested_element extends base_nested_element implements processable {
     protected $tablesortby; // The field to sort by when using the table methods
     /** @var string */
     protected $sql;       // Raw SQL to fetch records from
+    /** @var callable|null */
+    protected $callback;  // Callback to fetch records from.
     /** @var mixed */
     protected $params;    // Unprocessed params as specified in the set_source() call
     /** @var array */
@@ -65,6 +67,7 @@ class backup_nested_element extends base_nested_element implements processable {
         $this->table     = null;
         $this->tablesortby = null;
         $this->sql       = null;
+        $this->callback  = null;
         $this->params    = null;
         $this->procparams= null;
         $this->aliases   = array();
@@ -225,6 +228,20 @@ class backup_nested_element extends base_nested_element implements processable {
         $this->procparams = $this->convert_sql_params($params);
     }
 
+    /**
+     * Set a callback used to fetch the source records for this element.
+     *
+     * The callback is called with the resolved source params, the element and
+     * the processor, and must return an array or Traversable of records.
+     *
+     * @param callable $callback
+     * @param array $params
+     */
+    public function set_source_callback(callable $callback, array $params = []): void {
+        $this->callback = $callback;
+        $this->procparams = $this->convert_sql_params($params);
+    }
+
     public function set_source_alias($dbname, $finalelementname) {
         // Get final element
         $finalelement = $this->get_final_element($finalelementname);
@@ -281,6 +298,24 @@ class backup_nested_element extends base_nested_element implements processable {
 
     public function get_source_sql() {
         return $this->sql;
+    }
+
+    /**
+     * Get the source callback, if any.
+     *
+     * @return callable|null
+     */
+    public function get_source_callback() {
+        return $this->callback;
+    }
+
+    /**
+     * Get the processed source params.
+     *
+     * @return array
+     */
+    public function get_source_params(): array {
+        return $this->procparams ?? [];
     }
 
     public function get_counter() {

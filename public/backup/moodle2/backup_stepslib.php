@@ -40,8 +40,8 @@ class create_and_clean_temp_stuff extends backup_execution_step {
         $progress->start_progress('Deleting backup directories');
         backup_helper::check_and_create_backup_dir($this->get_backupid());// Create backup temp dir
         backup_helper::clear_backup_dir($this->get_backupid(), $progress);           // Empty temp dir, just in case
-        backup_controller_dbops::drop_backup_ids_temp_table($this->get_backupid()); // Drop ids temp table
-        backup_controller_dbops::create_backup_ids_temp_table($this->get_backupid()); // Create ids temp table
+        backup_controller_dbops::drop_backup_ids_temp_table($this->get_backupid()); // Drop ids temporary storage.
+        backup_controller_dbops::create_backup_ids_temp_table($this->get_backupid()); // Create ids temporary storage.
         $progress->end_progress();
     }
 }
@@ -58,7 +58,7 @@ class drop_and_clean_temp_stuff extends backup_execution_step {
     protected function define_execution() {
         global $CFG;
 
-        backup_controller_dbops::drop_backup_ids_temp_table($this->get_backupid()); // Drop ids temp table
+        backup_controller_dbops::drop_backup_ids_temp_table($this->get_backupid()); // Drop ids temporary storage.
         // Delete temp dir conditionally:
         // 1) If $CFG->keeptempdirectoriesonbackup is not enabled
         // 2) If backup temp dir deletion has been marked to be avoided
@@ -349,7 +349,7 @@ abstract class backup_questions_activity_structure_step extends backup_activity_
 /**
  * backup structure step in charge of calculating the categories to be
  * included in backup, based in the context being backuped (module/course)
- * and the already annotated questions present in backup_ids_temp
+ * and the already annotated questions present in the backup temporary storage
  */
 class backup_calculate_question_categories extends backup_execution_step {
 
@@ -360,7 +360,7 @@ class backup_calculate_question_categories extends backup_execution_step {
 
 /**
  * backup structure step in charge of deleting all the questions annotated
- * in the backup_ids_temp table
+ * in the backup temporary storage
  */
 class backup_delete_temp_questions extends backup_execution_step {
 
@@ -822,12 +822,25 @@ class backup_final_roles_structure_step extends backup_structure_step {
 
         // Define sources
 
-        $role->set_source_sql("SELECT r.*, rn.name AS nameincourse
-                                 FROM {role} r
-                                 JOIN {backup_ids_temp} bi ON r.id = bi.itemid
-                            LEFT JOIN {role_names} rn ON r.id = rn.roleid AND rn.contextid = ?
-                                WHERE bi.backupid = ?
-                                  AND bi.itemname = 'rolefinal'", array(backup::VAR_CONTEXTID, backup::VAR_BACKUPID));
+        $role->set_source_callback(
+            function (array $values) {
+                global $DB;
+                $roleids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'rolefinal');
+                if (!$roleids) {
+                    return [];
+                }
+                [$insql, $params] = $DB->get_in_or_equal($roleids, SQL_PARAMS_NAMED, 'r');
+                $params['contextid'] = $values['contextid'];
+                return $DB->get_records_sql(
+                    "SELECT r.*, rn.name AS nameincourse
+                       FROM {role} r
+                  LEFT JOIN {role_names} rn ON r.id = rn.roleid AND rn.contextid = :contextid
+                      WHERE r.id {$insql}",
+                    $params
+                );
+            },
+            ['contextid' => backup::VAR_CONTEXTID]
+        );
 
         // Return main element (rolesdef)
         return $rolesdef;
@@ -856,11 +869,16 @@ class backup_final_scales_structure_step extends backup_structure_step {
 
         // Define sources
 
-        $scale->set_source_sql("SELECT s.*
-                                  FROM {scale} s
-                                  JOIN {backup_ids_temp} bi ON s.id = bi.itemid
-                                 WHERE bi.backupid = ?
-                                   AND bi.itemname = 'scalefinal'", array(backup::VAR_BACKUPID));
+        $scale->set_source_callback(
+            function (array $values) {
+                global $DB;
+                $scaleids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'scalefinal');
+                if (!$scaleids) {
+                    return [];
+                }
+                return $DB->get_records_list('scale', 'id', $scaleids);
+            }
+        );
 
         // Annotate scale files (they store files in system context, so pass it instead of default one)
         $scale->annotate_files('grade', 'scale', 'id', context_system::instance()->id);
@@ -942,11 +960,16 @@ class backup_final_outcomes_structure_step extends backup_structure_step {
 
         // Define sources
 
-        $outcome->set_source_sql("SELECT o.*
-                                    FROM {grade_outcomes} o
-                                    JOIN {backup_ids_temp} bi ON o.id = bi.itemid
-                                   WHERE bi.backupid = ?
-                                     AND bi.itemname = 'outcomefinal'", array(backup::VAR_BACKUPID));
+        $outcome->set_source_callback(
+            function (array $values) {
+                global $DB;
+                $outcomeids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'outcomefinal');
+                if (!$outcomeids) {
+                    return [];
+                }
+                return $DB->get_records_list('grade_outcomes', 'id', $outcomeids);
+            }
+        );
 
         // Annotate outcome files (they store files in system context, so pass it instead of default one)
         $outcome->annotate_files('grade', 'outcome', 'id', context_system::instance()->id);
@@ -1533,22 +1556,28 @@ class backup_groups_structure_step extends backup_structure_step {
 
         // This only happens if we are including groups/groupings.
         if ($groupinfo) {
-            $group->set_source_sql("
-                SELECT g.*
-                  FROM {groups} g
-                  JOIN {backup_ids_temp} bi ON g.id = bi.itemid
-                 WHERE bi.backupid = ?
-                   AND bi.itemname = 'groupfinal'",
-                [backup_helper::is_sqlparam($this->get_backupid())]
+            // Resolve these once because they are also needed for the custom field data below.
+            $groupids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'groupfinal');
+            $groupingids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'groupingfinal');
+
+            $group->set_source_callback(
+                function (array $values) use ($groupids) {
+                    global $DB;
+                    if (!$groupids) {
+                        return [];
+                    }
+                    return $DB->get_records_list('groups', 'id', $groupids);
+                }
             );
 
-            $grouping->set_source_sql("
-                SELECT g.*
-                  FROM {groupings} g
-                  JOIN {backup_ids_temp} bi ON g.id = bi.itemid
-                 WHERE bi.backupid = ?
-                   AND bi.itemname = 'groupingfinal'",
-                [backup_helper::is_sqlparam($this->get_backupid())]
+            $grouping->set_source_callback(
+                function (array $values) use ($groupingids) {
+                    global $DB;
+                    if (!$groupingids) {
+                        return [];
+                    }
+                    return $DB->get_records_list('groupings', 'id', $groupingids);
+                }
             );
 
             $groupinggroup->set_source_table('groupings_groups', array('groupingid' => backup::VAR_PARENTID));
@@ -1560,16 +1589,10 @@ class backup_groups_structure_step extends backup_structure_step {
 
             // Custom fields.
             if ($this->get_setting_value('customfield')) {
-                $groupcustomfieldarray = $this->get_group_custom_fields_for_backup(
-                    $group->get_source_sql(),
-                    [$this->get_backupid()]
-                );
+                $groupcustomfieldarray = $this->get_group_custom_fields_for_backup($groupids);
                 $groupcustomfield->set_source_array($groupcustomfieldarray);
 
-                $groupingcustomfieldarray = $this->get_grouping_custom_fields_for_backup(
-                    $grouping->get_source_sql(),
-                    [$this->get_backupid()]
-                );
+                $groupingcustomfieldarray = $this->get_grouping_custom_fields_for_backup($groupingids);
                 $groupingcustomfield->set_source_array($groupingcustomfieldarray);
             }
         }
@@ -1591,18 +1614,14 @@ class backup_groups_structure_step extends backup_structure_step {
     /**
      * Get custom fields array for group
      *
-     * @param string $groupsourcesql
-     * @param array $groupsourceparams
+     * @param int[] $groupids
      * @return array
      */
-    protected function get_group_custom_fields_for_backup(string $groupsourcesql, array $groupsourceparams): array {
-        global $DB;
+    protected function get_group_custom_fields_for_backup(array $groupids): array {
         $handler = \core_group\customfield\group_handler::create();
         $fieldsforbackup = [];
-        if ($groups = $DB->get_records_sql($groupsourcesql, $groupsourceparams)) {
-            foreach ($groups as $group) {
-                $fieldsforbackup = array_merge($fieldsforbackup, $handler->get_instance_data_for_backup($group->id));
-            }
+        foreach ($groupids as $groupid) {
+            $fieldsforbackup = array_merge($fieldsforbackup, $handler->get_instance_data_for_backup($groupid));
         }
         return $fieldsforbackup;
     }
@@ -1610,18 +1629,14 @@ class backup_groups_structure_step extends backup_structure_step {
     /**
      * Get custom fields array for grouping
      *
-     * @param string $groupingsourcesql
-     * @param array $groupingsourceparams
+     * @param int[] $groupingids
      * @return array
      */
-    protected function get_grouping_custom_fields_for_backup(string $groupingsourcesql, array $groupingsourceparams): array {
-        global $DB;
+    protected function get_grouping_custom_fields_for_backup(array $groupingids): array {
         $handler = \core_group\customfield\grouping_handler::create();
         $fieldsforbackup = [];
-        if ($groupings = $DB->get_records_sql($groupingsourcesql, $groupingsourceparams)) {
-            foreach ($groupings as $grouping) {
-                $fieldsforbackup = array_merge($fieldsforbackup, $handler->get_instance_data_for_backup($grouping->id));
-            }
+        foreach ($groupingids as $groupingid) {
+            $fieldsforbackup = array_merge($fieldsforbackup, $handler->get_instance_data_for_backup($groupingid));
         }
         return $fieldsforbackup;
     }
@@ -1740,15 +1755,25 @@ class backup_users_structure_step extends backup_structure_step {
 
         // Define sources
 
-        $user->set_source_sql('SELECT u.*, c.id AS contextid, m.wwwroot AS mnethosturl
-                                 FROM {user} u
-                                 JOIN {backup_ids_temp} bi ON bi.itemid = u.id
-                            LEFT JOIN {context} c ON c.instanceid = u.id AND c.contextlevel = ' . CONTEXT_USER . '
-                            LEFT JOIN {mnet_host} m ON m.id = u.mnethostid
-                                WHERE bi.backupid = ?
-                                  AND bi.itemname = ?', array(
-                                      backup_helper::is_sqlparam($this->get_backupid()),
-                                      backup_helper::is_sqlparam('userfinal')));
+        $user->set_source_callback(
+            function (array $values) {
+                global $DB;
+                $userids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'userfinal');
+                if (!$userids) {
+                    return [];
+                }
+                [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
+                $params['contextlevel'] = CONTEXT_USER;
+                return $DB->get_records_sql(
+                    "SELECT u.*, c.id AS contextid, m.wwwroot AS mnethosturl
+                       FROM {user} u
+                  LEFT JOIN {context} c ON c.instanceid = u.id AND c.contextlevel = :contextlevel
+                  LEFT JOIN {mnet_host} m ON m.id = u.mnethostid
+                      WHERE u.id {$insql}",
+                    $params
+                );
+            }
+        );
 
         // All the rest on information is only added if we arent
         // in an anonymized backup
@@ -2132,12 +2157,16 @@ class backup_inforef_structure_step extends backup_structure_step {
                 $element = new backup_nested_element($itemname, array(), array('id'));
                 $inforef->add_child($elementroot);
                 $elementroot->add_child($element);
-                $element->set_source_sql("
-                    SELECT itemid AS id
-                     FROM {backup_ids_temp}
-                    WHERE backupid = ?
-                      AND itemname = ?",
-                   array(backup::VAR_BACKUPID, backup_helper::is_sqlparam($itemname)));
+                $element->set_source_callback(
+                    function (array $values) use ($itemname) {
+                        $ids = backup_controller_dbops::get_item_ids($this->get_backupid(), $itemname);
+                        $result = [];
+                        foreach ($ids as $id) {
+                            $result[] = (object) ['id' => $id];
+                        }
+                        return $result;
+                    }
+                );
             }
         }
 
@@ -2198,14 +2227,25 @@ class backup_final_files_structure_step extends backup_structure_step {
 
         // Define sources
 
-        $file->set_source_sql("SELECT f.*, r.type AS repositorytype, fr.repositoryid, fr.reference
-                                 FROM {files} f
-                                      LEFT JOIN {files_reference} fr ON fr.id = f.referencefileid
-                                      LEFT JOIN {repository_instances} ri ON ri.id = fr.repositoryid
-                                      LEFT JOIN {repository} r ON r.id = ri.typeid
-                                      JOIN {backup_ids_temp} bi ON f.id = bi.itemid
-                                WHERE bi.backupid = ?
-                                  AND bi.itemname = 'filefinal'", array(backup::VAR_BACKUPID));
+        $file->set_source_callback(
+            function (array $values) {
+                global $DB;
+                $fileids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'filefinal');
+                if (!$fileids) {
+                    return [];
+                }
+                [$insql, $params] = $DB->get_in_or_equal($fileids, SQL_PARAMS_NAMED, 'f');
+                return $DB->get_records_sql(
+                    "SELECT f.*, r.type AS repositorytype, fr.repositoryid, fr.reference
+                       FROM {files} f
+                  LEFT JOIN {files_reference} fr ON fr.id = f.referencefileid
+                  LEFT JOIN {repository_instances} ri ON ri.id = fr.repositoryid
+                  LEFT JOIN {repository} r ON r.id = ri.typeid
+                      WHERE f.id {$insql}",
+                    $params
+                );
+            }
+        );
 
         return $files;
     }
@@ -2552,8 +2592,7 @@ class backup_annotate_groups_from_groupings extends backup_execution_step {
         global $DB;
 
         // Fetch all the annotated groupings
-        if ($groupings = $DB->get_records('backup_ids_temp', array(
-                'backupid' => $this->get_backupid(), 'itemname' => 'grouping'))) {
+        if ($groupings = backup_controller_dbops::get_items($this->get_backupid(), 'grouping')) {
             foreach ($groupings as $grouping) {
                 if ($groups = $DB->get_records('groupings_groups', array(
                         'groupingid' => $grouping->itemid))) {
@@ -2575,8 +2614,7 @@ class backup_annotate_scales_from_outcomes extends backup_execution_step {
         global $DB;
 
         // Fetch all the annotated outcomes
-        if ($outcomes = $DB->get_records('backup_ids_temp', array(
-                'backupid' => $this->get_backupid(), 'itemname' => 'outcome'))) {
+        if ($outcomes = backup_controller_dbops::get_items($this->get_backupid(), 'outcome')) {
             foreach ($outcomes as $outcome) {
                 if ($scale = $DB->get_record('grade_outcomes', array(
                         'id' => $outcome->itemid))) {
@@ -2603,11 +2641,17 @@ class backup_annotate_all_question_files extends backup_execution_step {
 
         // Get all the different contexts for the final question_categories
         // annotated along the whole backup
-        $rs = $DB->get_recordset_sql("SELECT DISTINCT qc.contextid
-                                        FROM {question_categories} qc
-                                        JOIN {backup_ids_temp} bi ON bi.itemid = qc.id
-                                       WHERE bi.backupid = ?
-                                         AND bi.itemname = 'question_categoryfinal'", array($this->get_backupid()));
+        $categoryids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'question_categoryfinal');
+        $rs = [];
+        if ($categoryids) {
+            [$insql, $params] = $DB->get_in_or_equal($categoryids, SQL_PARAMS_NAMED, 'qc');
+            $rs = $DB->get_records_sql(
+                "SELECT DISTINCT qc.contextid
+                   FROM {question_categories} qc
+                  WHERE qc.id {$insql}",
+                $params
+            );
+        }
         // To know about qtype specific components/fileareas
         $components = backup_qtype_plugin::get_components_and_fileareas();
         $progress = $this->task->get_progress();
@@ -2644,7 +2688,6 @@ class backup_annotate_all_question_files extends backup_execution_step {
             }
         }
         $progress->end_progress();
-        $rs->close();
     }
 }
 
@@ -2657,18 +2700,12 @@ class backup_questions_structure_step extends backup_structure_step {
 
     #[\Override]
     public function execute() {
-        global $DB;
-        backup_controller_dbops::create_question_category_temp_tables();
-        $DB->execute("INSERT INTO {question_category_complete_temp} (backupid, itemid)
-            SELECT backupid, itemid
-             FROM {backup_ids_temp}
-            WHERE itemname = 'question_category_complete'");
-        $DB->execute("INSERT INTO {question_category_partial_temp} (backupid, itemid)
-            SELECT backupid, itemid
-             FROM {backup_ids_temp}
-            WHERE itemname = 'question_category_partial'");
-        $results = parent::execute();
-        backup_controller_dbops::drop_question_category_temp_tables();
+        backup_controller_dbops::create_question_category_temp_tables($this->get_backupid());
+        try {
+            $results = parent::execute();
+        } finally {
+            backup_controller_dbops::drop_question_category_temp_tables();
+        }
         return $results;
     }
 
@@ -2765,68 +2802,43 @@ class backup_questions_structure_step extends backup_structure_step {
         $question->add_child($tags);
         $tags->add_child($tag);
 
-        $qcategory->set_source_sql("
-            SELECT gc.*,
-                   contextlevel,
-                   instanceid AS contextinstanceid
-              FROM {question_categories} gc
-              JOIN {backup_ids_temp} bi ON bi.itemid = gc.id
-              JOIN {context} co ON co.id = gc.contextid
-             WHERE bi.backupid = ?
-               AND bi.itemname = 'question_categoryfinal'", [backup::VAR_BACKUPID]);
+        $qcategory->set_source_callback(
+            static function (array $values): array {
+                return backup_question_bank_cache::get_question_categories();
+            }
+        );
 
         // Add all question bank entries from "complete" categories, plus annotated question bank entires and their children
         // from "partial" categories.
-        $questionbankentry->set_source_sql(
-            "
-                SELECT qbe.*
-                 FROM {question_bank_entries} qbe
-                 JOIN {question_category_complete_temp} qcc ON qcc.itemid = qbe.questioncategoryid
-                WHERE qcc.itemid = ?
-                      AND qcc.backupid = ?
-                UNION
-                SELECT qbe.*
-                 FROM {question_bank_entries} qbe
-                 JOIN {question_versions} qv ON qv.questionbankentryid = qbe.id
-                 JOIN {question} q ON q.id = qv.questionid
-                 LEFT JOIN {question_versions} parentqv ON parentqv.questionid = q.parent
-                 JOIN {question_category_partial_temp} qcp ON qcp.itemid = qbe.questioncategoryid
-                 JOIN {backup_ids_temp} biq ON biq.itemid = qbe.id OR biq.itemid = parentqv.questionbankentryid
-                WHERE qcp.itemid = ?
-                      AND qcp.backupid = ?
-                      AND biq.backupid = ?
-                      AND biq.itemname = 'question_bank_entry'
-            ",
-            [
-                backup::VAR_PARENTID,
-                backup::VAR_BACKUPID,
-                backup::VAR_PARENTID,
-                backup::VAR_BACKUPID,
-                backup::VAR_BACKUPID,
-            ],
+        $questionbankentry->set_source_callback(
+            static function (array $values): array {
+                return backup_question_bank_cache::get_entries_for_category((int) reset($values));
+            },
+            [backup::VAR_PARENTID]
         );
 
         $questionverion->set_source_table('question_versions', ['questionbankentryid' => backup::VAR_PARENTID], 'version ASC');
 
-        $question->set_source_sql('
-                SELECT q.*
-                 FROM {question} q
-                 JOIN {question_versions} qv ON qv.questionid = q.id
-                 JOIN {question_bank_entries} qbe ON qbe.id = qv.questionbankentryid
-                WHERE qv.id = ?', [backup::VAR_PARENTID]);
+        $question->set_source_callback(
+            static function (array $values): array {
+                return backup_question_bank_cache::get_question_by_version((int) reset($values));
+            },
+            [backup::VAR_PARENTID]
+        );
 
-        $qhint->set_source_sql('
-                SELECT *
-                 FROM {question_hints}
-                WHERE questionid = :questionid
-             ORDER BY id', ['questionid' => backup::VAR_PARENTID]);
+        $qhint->set_source_callback(
+            static function (array $values): array {
+                return backup_question_bank_cache::get_hints_for_question((int) reset($values));
+            },
+            ['questionid' => backup::VAR_PARENTID]
+        );
 
-        $tag->set_source_sql("SELECT t.id, ti.contextid, t.name, t.rawname
-                                FROM {tag} t
-                                JOIN {tag_instance} ti ON ti.tagid = t.id
-                               WHERE ti.itemid = ?
-                                 AND ti.itemtype = 'question'
-                                 AND ti.component = 'core_question'", [backup::VAR_PARENTID]);
+        $tag->set_source_callback(
+            static function (array $values): array {
+                return backup_question_bank_cache::get_tags_for_question((int) reset($values));
+            },
+            [backup::VAR_PARENTID]
+        );
 
         // Don't need to annotate ids nor files.
         // ...(already done by {@see backup_annotate_all_question_files()}.
@@ -2853,8 +2865,7 @@ class backup_annotate_all_user_files extends backup_execution_step {
         $fileareas = array('profile', 'icon');
 
         // Fetch all annotated (final) users
-        $rs = $DB->get_recordset('backup_ids_temp', array(
-            'backupid' => $this->get_backupid(), 'itemname' => 'userfinal'));
+        $rs = backup_controller_dbops::get_items($this->get_backupid(), 'userfinal');
         $progress = $this->task->get_progress();
         $progress->start_progress($this->get_name());
         foreach ($rs as $record) {
@@ -2872,7 +2883,6 @@ class backup_annotate_all_user_files extends backup_execution_step {
             }
         }
         $progress->end_progress();
-        $rs->close();
     }
 }
 
@@ -3032,11 +3042,16 @@ class backup_activity_grades_structure_step extends backup_structure_step {
 
         // Define sources
 
-        $item->set_source_sql("SELECT gi.*
-                               FROM {grade_items} gi
-                               JOIN {backup_ids_temp} bi ON gi.id = bi.itemid
-                               WHERE bi.backupid = ?
-                               AND bi.itemname = 'grade_item'", array(backup::VAR_BACKUPID));
+        $item->set_source_callback(
+            function (array $values) {
+                global $DB;
+                $itemids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'grade_item');
+                if (!$itemids) {
+                    return [];
+                }
+                return $DB->get_records_list('grade_items', 'id', $itemids);
+            }
+        );
 
         // This only happens if we are including user info
         if ($userinfo) {
@@ -3110,11 +3125,22 @@ class backup_activity_grade_history_structure_step extends backup_structure_step
         // This only happens if we are including user info and history.
         if ($userinfo && $history) {
             // Define sources. Only select the history related to existing activity items.
-            $grade->set_source_sql("SELECT ggh.*
-                                     FROM {grade_grades_history} ggh
-                                     JOIN {backup_ids_temp} bi ON ggh.itemid = bi.itemid
-                                    WHERE bi.backupid = ?
-                                      AND bi.itemname = 'grade_item'", array(backup::VAR_BACKUPID));
+            $grade->set_source_callback(
+                function (array $values) {
+                    global $DB;
+                    $itemids = backup_controller_dbops::get_item_ids($this->get_backupid(), 'grade_item');
+                    if (!$itemids) {
+                        return [];
+                    }
+                    [$insql, $params] = $DB->get_in_or_equal($itemids, SQL_PARAMS_NAMED, 'gi');
+                    return $DB->get_records_sql(
+                        "SELECT ggh.*
+                           FROM {grade_grades_history} ggh
+                          WHERE ggh.itemid {$insql}",
+                        $params
+                    );
+                }
+            );
             $grade->annotate_files(GRADE_FILE_COMPONENT, GRADE_HISTORY_FEEDBACK_FILEAREA, 'id');
         }
 

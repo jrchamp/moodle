@@ -100,16 +100,31 @@ class restore_qtype_essay_plugin extends restore_qtype_plugin {
     protected function after_execute_question() {
         global $DB;
 
-        $essayswithoutoptions = $DB->get_records_sql("
+        $mappings = restore_dbops::get_mappings($this->get_restoreid(), [
+            'backupid' => $this->get_restoreid(),
+            'itemname' => 'question_created',
+        ], '', 'newitemid');
+
+        $questionids = [];
+        foreach ($mappings as $mapping) {
+            if (!empty($mapping->newitemid)) {
+                $questionids[] = (int) $mapping->newitemid;
+            }
+        }
+
+        $essayswithoutoptions = [];
+        if ($questionids) {
+            [$insql, $params] = $DB->get_in_or_equal($questionids, SQL_PARAMS_NAMED, 'q');
+            $params['qtype'] = 'essay';
+            $essayswithoutoptions = $DB->get_records_sql("
                     SELECT q.*
                       FROM {question} q
-                      JOIN {backup_ids_temp} bi ON bi.newitemid = q.id
                  LEFT JOIN {qtype_essay_options} qeo ON qeo.questionid = q.id
-                     WHERE q.qtype = ?
+                     WHERE q.qtype = :qtype
                        AND qeo.id IS NULL
-                       AND bi.backupid = ?
-                       AND bi.itemname = ?
-                ", array('essay', $this->get_restoreid(), 'question_created'));
+                       AND q.id {$insql}
+                ", $params);
+        }
 
         foreach ($essayswithoutoptions as $q) {
             $defaultoptions = new stdClass();

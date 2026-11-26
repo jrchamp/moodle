@@ -399,21 +399,20 @@ abstract class backup_plan_dbops extends backup_dbops {
     public static function require_gradebook_backup($courseid, $backupid) {
         global $DB;
 
+        $params = ['courseid' => $courseid];
+        $idcondition = '';
+        $gradeitemids = backup_controller_dbops::get_item_ids($backupid, 'grade_itemfinal');
+        if ($gradeitemids) {
+            [$insql, $inparams] = $DB->get_in_or_equal($gradeitemids, SQL_PARAMS_NAMED, 'gi', false);
+            $params += $inparams;
+            $idcondition = "AND id {$insql}";
+        }
+
         $sql = "SELECT count(id)
                   FROM {grade_items}
-                 WHERE courseid=:courseid
+                 WHERE courseid = :courseid
                    AND itemtype = 'mod'
-                   AND id NOT IN (
-                       SELECT bi.itemid
-                         FROM {backup_ids_temp} bi
-                        WHERE bi.itemname = 'grade_itemfinal'
-                          AND bi.backupid = :backupid)";
-        $params = array('courseid'=>$courseid, 'backupid'=>$backupid);
-
-
-        $count = $DB->count_records_sql($sql, $params);
-
-        //if there are 0 activity grade items not already included in the backup
-        return $count == 0;
+                   {$idcondition}";
+        return $DB->count_records_sql($sql, $params) == 0;
     }
 }

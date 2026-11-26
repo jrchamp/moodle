@@ -417,8 +417,6 @@ class moodle1_converter extends base_converter {
 
     /**
      * Creates the temporary storage for stashed data
-     *
-     * This implementation uses backup_ids_temp table.
      */
     public function create_stash_storage() {
         backup_controller_dbops::create_backup_ids_temp_table($this->get_id());
@@ -426,8 +424,6 @@ class moodle1_converter extends base_converter {
 
     /**
      * Drops the temporary storage of stashed data
-     *
-     * This implementation uses backup_ids_temp table.
      */
     public function drop_stash_storage() {
         backup_controller_dbops::drop_backup_ids_temp_table($this->get_id());
@@ -436,14 +432,17 @@ class moodle1_converter extends base_converter {
     /**
      * Stores some information for later processing
      *
-     * This implementation uses backup_ids_temp table to store data. Make
-     * sure that the $stashname + $itemid combo is unique.
+     * Make sure that the $stashname + $itemid combo is unique.
      *
      * @param string $stashname name of the stash
      * @param mixed $info information to stash
      * @param int $itemid optional id for multiple infos within the same stashname
      */
     public function set_stash($stashname, $info, $itemid = 0) {
+        if (!restore_dbops::is_ids_store_initialized($this->get_id())) {
+            throw new moodle1_convert_storage_exception('unable_to_restore_stash');
+        }
+
         try {
             restore_dbops::set_backup_ids_record($this->get_id(), $stashname, $itemid, 0, null, $info);
 
@@ -496,13 +495,13 @@ class moodle1_converter extends base_converter {
      * @return array
      */
     public function get_stash_names() {
-        global $DB;
-
-        $search = array(
-            'backupid' => $this->get_id(),
+        $records = restore_dbops::get_mappings(
+            $this->get_id(),
+            ['backupid' => $this->get_id()],
+            '',
+            'itemname'
         );
-
-        return array_keys($DB->get_records('backup_ids_temp', $search, '', 'itemname'));
+        return array_keys($records);
     }
 
     /**
@@ -512,14 +511,11 @@ class moodle1_converter extends base_converter {
      * @return array
      */
     public function get_stash_itemids($stashname) {
-        global $DB;
-
-        $search = array(
+        $records = restore_dbops::get_mappings($this->get_id(), [
             'backupid' => $this->get_id(),
-            'itemname' => $stashname
-        );
-
-        return array_keys($DB->get_records('backup_ids_temp', $search, '', 'itemid'));
+            'itemname' => $stashname,
+        ], '', 'itemid');
+        return array_keys($records);
     }
 
     /**

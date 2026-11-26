@@ -94,13 +94,28 @@ class restore_qtype_multianswer_plugin extends restore_qtype_plugin {
         global $DB;
         // Now that all the questions have been restored, let's process
         // the created question_multianswer sequences (list of question ids).
-        $rs = $DB->get_recordset_sql("
-                SELECT qma.id, qma.sequence
-                  FROM {question_multianswer} qma
-                  JOIN {backup_ids_temp} bi ON bi.newitemid = qma.question
-                 WHERE bi.backupid = ?
-                   AND bi.itemname = 'question_created'",
-                array($this->get_restoreid()));
+        $mappings = restore_dbops::get_mappings($this->get_restoreid(), [
+            'backupid' => $this->get_restoreid(),
+            'itemname' => 'question_created',
+        ], '', 'newitemid');
+
+        $questionids = [];
+        foreach ($mappings as $mapping) {
+            if (!empty($mapping->newitemid)) {
+                $questionids[] = (int) $mapping->newitemid;
+            }
+        }
+
+        $rs = [];
+        if ($questionids) {
+            [$insql, $params] = $DB->get_in_or_equal($questionids, SQL_PARAMS_NAMED, 'q');
+            $rs = $DB->get_records_sql(
+                "SELECT qma.id, qma.sequence
+                   FROM {question_multianswer} qma
+                  WHERE qma.question {$insql}",
+                $params
+            );
+        }
         foreach ($rs as $rec) {
             $sequencearr = preg_split('/,/', $rec->sequence, -1, PREG_SPLIT_NO_EMPTY);
             if (substr_count($rec->sequence, ',') + 1 != count($sequencearr)) {
@@ -133,7 +148,6 @@ class restore_qtype_multianswer_plugin extends restore_qtype_plugin {
                 }
             }
         }
-        $rs->close();
     }
 
     public function recode_response($questionid, $sequencenumber, array $response) {

@@ -22,6 +22,12 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/backup_ids_temp_store.class.php');
+require_once(__DIR__ . '/backup_ids_temp.class.php');
+require_once(__DIR__ . '/backup_question_bank_cache.class.php');
+
 /**
  * Non instantiable helper class providing DB support to the @backup_controller
  *
@@ -118,57 +124,25 @@ abstract class backup_controller_dbops extends backup_dbops {
         return $controller;
     }
 
+    /**
+     * Create the backup ids temporary storage.
+     *
+     * @param string $backupid
+     */
     public static function create_backup_ids_temp_table($backupid) {
-        global $CFG, $DB;
-        $dbman = $DB->get_manager(); // We are going to use database_manager services
-
-        $xmldb_table = new xmldb_table('backup_ids_temp');
-        $xmldb_table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-        // Set default backupid (not needed but this enforce any missing backupid). That's hackery in action!
-        $xmldb_table->add_field('backupid', XMLDB_TYPE_CHAR, 32, null, XMLDB_NOTNULL, null, $backupid);
-        $xmldb_table->add_field('itemname', XMLDB_TYPE_CHAR, 160, null, XMLDB_NOTNULL, null, null);
-        $xmldb_table->add_field('itemid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, null);
-        $xmldb_table->add_field('newitemid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
-        $xmldb_table->add_field('parentitemid', XMLDB_TYPE_INTEGER, 10, null, null, null, null);
-        $xmldb_table->add_field('info', XMLDB_TYPE_TEXT, null, null, null, null, null);
-        $xmldb_table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
-        $xmldb_table->add_key('backupid_itemname_itemid_uk', XMLDB_KEY_UNIQUE, array('backupid','itemname','itemid'));
-        $xmldb_table->add_index('backupid_parentitemid_ix', XMLDB_INDEX_NOTUNIQUE, array('backupid','itemname','parentitemid'));
-        $xmldb_table->add_index('backupid_itemname_newitemid_ix', XMLDB_INDEX_NOTUNIQUE, array('backupid','itemname','newitemid'));
-
-        $dbman->create_temp_table($xmldb_table); // And create it
-
-    }
-
-    public static function create_backup_files_temp_table($backupid) {
-        global $CFG, $DB;
-        $dbman = $DB->get_manager(); // We are going to use database_manager services
-
-        $xmldb_table = new xmldb_table('backup_files_temp');
-        $xmldb_table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-        // Set default backupid (not needed but this enforce any missing backupid). That's hackery in action!
-        $xmldb_table->add_field('backupid', XMLDB_TYPE_CHAR, 32, null, XMLDB_NOTNULL, null, $backupid);
-        $xmldb_table->add_field('contextid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, null);
-        $xmldb_table->add_field('component', XMLDB_TYPE_CHAR, 100, null, XMLDB_NOTNULL, null, null);
-        $xmldb_table->add_field('filearea', XMLDB_TYPE_CHAR, 50, null, XMLDB_NOTNULL, null, null);
-        $xmldb_table->add_field('itemid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, null);
-        $xmldb_table->add_field('info', XMLDB_TYPE_TEXT, null, null, null, null, null);
-        $xmldb_table->add_field('newcontextid', XMLDB_TYPE_INTEGER, 10, null, null, null, null);
-        $xmldb_table->add_field('newitemid', XMLDB_TYPE_INTEGER, 10, null, null, null, null);
-        $xmldb_table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
-        $xmldb_table->add_index('backupid_contextid_component_filearea_itemid_ix', XMLDB_INDEX_NOTUNIQUE, array('backupid','contextid','component','filearea','itemid'));
-
-        $dbman->create_temp_table($xmldb_table); // And create it
+        backup_ids_temp::create_temp_table($backupid);
     }
 
     /**
-     * Create temporary tables to store a partial copies of question category data from the backup_ids_temp table.
+     * Create temporary tables to store a partial copies of question category data from the backup temporary storage.
      *
      * This is to work around MySQL's restruction on joining the same temporary table multiple times in the same query. It isn't
      * necessary on PostgreSQL (which can join temporary tables multiple times) or MSSQL (which doesn't really use temporary tables)
      * but doing it this way keeps things database-agnostic.
+     *
+     * @param string $backupid
      */
-    public static function create_question_category_temp_tables(): void {
+    public static function create_question_category_temp_tables($backupid): void {
         global $DB;
         $dbman = $DB->get_manager();
 
@@ -181,17 +155,124 @@ abstract class backup_controller_dbops extends backup_dbops {
 
             $dbman->create_temp_table($xmldbtable);
         }
+
+        self::copy_items_to_table($backupid, 'question_category_complete', 'question_category_complete_temp');
+        self::copy_items_to_table($backupid, 'question_category_partial', 'question_category_partial_temp');
+        backup_question_bank_cache::start($backupid);
     }
 
+    /**
+     * Drop the backup ids temporary storage.
+     *
+     * @param string $backupid
+     */
     public static function drop_backup_ids_temp_table($backupid) {
-        global $DB;
-        $dbman = $DB->get_manager(); // We are going to use database_manager services
+        backup_ids_temp::drop_temp_table($backupid);
+    }
 
-        $targettablename = 'backup_ids_temp';
-        if ($dbman->table_exists($targettablename)) {
-            $table = new xmldb_table($targettablename);
-            $dbman->drop_table($table); // And drop it
-        }
+    /**
+     * Whether the backup ids temporary storage has been initialised.
+     *
+     * @param string $backupid
+     * @return bool
+     */
+    public static function is_ids_store_initialized($backupid): bool {
+        return backup_ids_temp_store::get($backupid)->is_initialized();
+    }
+
+    /**
+     * Get the item ids selected for backup.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @return int[]
+     */
+    public static function get_item_ids($backupid, $itemname): array {
+        return backup_ids_temp::get_item_ids($backupid, $itemname);
+    }
+
+    /**
+     * Get the items selected for backup.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @param string $fields
+     * @param string $sort
+     * @return array
+     */
+    public static function get_items($backupid, $itemname, $fields = '*', $sort = ''): array {
+        return backup_ids_temp::get_items($backupid, $itemname, $fields, $sort);
+    }
+
+    /**
+     * Add an item to the backup.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @param int $itemid
+     */
+    public static function add_item($backupid, $itemname, $itemid): void {
+        backup_ids_temp::add_item($backupid, $itemname, $itemid);
+    }
+
+    /**
+     * Move items to their final item name.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @param \core\progress\base $progress
+     */
+    public static function move_items_to_final($backupid, $itemname, \core\progress\base $progress): void {
+        backup_ids_temp::move_to_final($backupid, $itemname, $progress);
+    }
+
+    /**
+     * Delete the items selected for backup.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     */
+    public static function delete_items($backupid, $itemname): void {
+        backup_ids_temp::delete_items($backupid, $itemname);
+    }
+
+    /**
+     * Whether any items are selected for backup under the given item name.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @return bool
+     */
+    public static function has_items($backupid, $itemname): bool {
+        return (bool) backup_ids_temp::count_records([
+            'backupid' => $backupid,
+            'itemname' => $itemname,
+        ]);
+    }
+
+    /**
+     * Count the items selected for backup under the given item name.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @return int
+     */
+    public static function count_items($backupid, $itemname): int {
+        return backup_ids_temp::count_records([
+            'backupid' => $backupid,
+            'itemname' => $itemname,
+        ]);
+    }
+
+    /**
+     * Copy the items selected for backup into another temporary table.
+     *
+     * @param string $backupid
+     * @param string $itemname
+     * @param string $tablename
+     */
+    public static function copy_items_to_table($backupid, $itemname, $tablename): void {
+        backup_ids_temp::copy_items_to_table($backupid, $itemname, $tablename);
     }
 
     /**
@@ -199,6 +280,7 @@ abstract class backup_controller_dbops extends backup_dbops {
      */
     public static function drop_question_category_temp_tables(): void {
         global $DB;
+        backup_question_bank_cache::stop();
         $dbman = $DB->get_manager();
 
         foreach (['question_category_complete_temp', 'question_category_partial_temp'] as $tablename) {
@@ -210,7 +292,7 @@ abstract class backup_controller_dbops extends backup_dbops {
     }
 
     /**
-     * Decode the info field from backup_ids_temp or backup_files_temp.
+     * Decode the info field from the backup temporary storage.
      *
      * @param mixed $info The info field data to decode, may be an object or a simple integer.
      * @return mixed The decoded information.  For simple types it returns, for complex ones we decode.
@@ -224,7 +306,7 @@ abstract class backup_controller_dbops extends backup_dbops {
     }
 
     /**
-     * Encode the info field for backup_ids_temp or backup_files_temp.
+     * Encode the info field for the backup temporary storage.
      *
      * @param mixed $info string The info field data to encode.
      * @return string An encoded string of data or null if the input is null.
@@ -510,13 +592,17 @@ abstract class backup_controller_dbops extends backup_dbops {
     public static function backup_includes_mnet_remote_users($backupid) {
         global $CFG, $DB;
 
+        $userids = self::get_item_ids($backupid, 'userfinal');
+        if (!$userids) {
+            return 0;
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'u');
+        $params['mnethostid'] = $CFG->mnet_localhost_id;
         $sql = "SELECT COUNT(*)
-                  FROM {backup_ids_temp} b
-                  JOIN {user} u ON u.id = b.itemid
-                 WHERE b.backupid = ?
-                   AND b.itemname = 'userfinal'
-                   AND u.mnethostid != ?";
-        $count = $DB->count_records_sql($sql, array($backupid, $CFG->mnet_localhost_id));
+                  FROM {user} u
+                 WHERE u.id {$insql}
+                   AND u.mnethostid != :mnethostid";
+        $count = $DB->count_records_sql($sql, $params);
         return (int)(bool)$count;
     }
 
@@ -553,15 +639,17 @@ abstract class backup_controller_dbops extends backup_dbops {
     public static function backup_includes_file_references($backupid) {
         global $CFG, $DB;
 
+        $fileids = self::get_item_ids($backupid, 'filefinal');
+        if (!$fileids) {
+            return 0;
+        }
+        [$insql, $params] = $DB->get_in_or_equal($fileids, SQL_PARAMS_NAMED, 'f');
         $sql = "SELECT count(r.repositoryid)
                   FROM {files} f
                   LEFT JOIN {files_reference} r
                        ON r.id = f.referencefileid
-                  JOIN {backup_ids_temp} bi
-                       ON f.id = bi.itemid
-                 WHERE bi.backupid = ?
-                       AND bi.itemname = 'filefinal'";
-        $count = $DB->count_records_sql($sql, array($backupid));
+                 WHERE f.id {$insql}";
+        $count = $DB->count_records_sql($sql, $params);
         return (int)(bool)$count;
     }
 
